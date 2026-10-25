@@ -1,6 +1,6 @@
 # OnePlus 11 (salami): CN ColorOS → OxygenOS → LineageOS
 
-Do these in order. Each step says what to run and what you should see. Stop and ask if a check doesn't match — don't push through an error on this device. There is a public EDL (9008) rescue route for this device (OPLUS EDL Tool / `bkerler/edl` + a matching firehose package), but it needs opening the phone or an EDL cable/test-point entry and the exact firehose file for PHB110 — treat it as a last resort you'd have to research mid-emergency, not a safety net. The backups in this guide are the real protection.
+These are experimental migration notes, not a guaranteed recovery procedure. Stop if a check does not match. A partition backup is evidence, not permission to restore it: replaying per-device secure state can be unsafe even on the same phone. Public EDL (9008) rescue routes require the correct PHB110 package and suitable access/tooling; do not treat them as a safety net.
 
 Host tools: `scripts/00-host-tools.sh` downloads `adb`/`fastboot` (platform-tools ≥ 35) and `payload-dumper-go` into `tools/` (gitignored). The scripts put `tools/platform-tools` on `PATH` themselves; for hand-typed commands, add it yourself or prefix `tools/platform-tools/`.
 
@@ -8,6 +8,8 @@ Host tools: `scripts/00-host-tools.sh` downloads `adb`/`fastboot` (platform-tool
 
 **Hard rules for the whole procedure:**
 - Never run `fastboot flashing lock`, ever, on this phone.
+- **NEVER restore, erase, format, or flash per-device/security-state partitions**, including `persist`, `keystore`, `secdata`, `tzsc`, `storsec`, `spunvm`, `qmcs`, `devinfo`, `uefivarstore`, `apdp*` (including `apdp_full`), `ssd`, `vm-persist`, `vm-data`, `qweslicstore_a/_b`, EFS (`modemst1`, `modemst2`, `fsg`, `fsc`), board/calibration state (`ocdt`, `cdt`, `dinfo`, `param`), or RPMB. This includes this phone's own old backups. Never run a whole-backup restore loop.
+- Keep those images in a separate local **`backup/per-device-DO-NOT-RESTORE/`** archive, outside every flashing input folder. Never upload their contents, including to an LLM/model provider. The narrowly documented `oplusstanvbk_a/_b` modem fix is not authorization to restore other per-device state.
 - Never flash OOS firmware older (lower Android version or earlier security-patch date) than what's currently on the phone. EDL rescue exists for this device but is nontrivial (cable/test-point + exact firehose package) — don't rely on it as the fallback for a bad flash.
 - Keep battery above 60%, direct USB port, no hub.
 
@@ -17,18 +19,18 @@ Host tools: `scripts/00-host-tools.sh` downloads `adb`/`fastboot` (platform-tool
 | Script | Step | Mode |
 |---|---|---|
 | `00-host-tools.sh` | host setup | host |
-| `10-backup-device.sh` | 3.3: dump every partition + SHA256SUMS, checks the irreplaceable ones (`oplusstanvbk_a/_b`, EFS, `persist`) | Android, rooted adb |
+| `10-backup-device.sh` | 3.3: collect flat backups and checksums; **manual per-device quarantine is mandatory afterward** | Android, rooted adb |
 | `20-extract.sh <cn.zip> <oos.zip>` | 3.1 + 3.4: extract both OTAs; refuses OOS older than CN or than 16.0.5.1301 | host |
 | `50-lineage-download.sh` | 5.1: newest build + `super_empty.img`, verified against the official API hashes | host |
 | `30-oos-firmware.sh` | 4.3: slotted firmware from `oos/` to both slots; keeps CN `oplusstanvbk`, own `modem`, LineageOS `recovery` | bootloader, or LineageOS-recovery fastbootd |
 | `40-oos-super.sh` | 4.5: wipe `super`, recreate `<name>_a` (full) + `<name>_b` (1 byte), flash | LineageOS-recovery fastbootd |
-| `45-restore-stanvbk.sh` | put the CN `oplusstanvbk` back (after an OOS OTA or full-firmware flash) | fastbootd |
+| `45-restore-stanvbk.sh` | restore **only** this phone's CN `oplusstanvbk_a/_b` from their existing `backup/device/` paths; never other per-device images | fastbootd |
 | `55-lineage-install.sh` | 5.2–5.7: boot images one per bootloader session, recovery, sideload | bootloader → recovery |
 | `60-checks.sh` | IMEI-related checks: `qsf_init` crash count, `oplusstanvbk` still CN | Android |
 | `70-network.sh` | captive-portal probes + NTP that work in China and abroad (section 7) | Android |
 | `80-perf-diag.sh` | UI-lag diagnostics (section 7) | LineageOS, rooted debugging |
 | `85-driver-check.sh` | GPU/display driver and vendor HAL health (section 7) | LineageOS; root for dmesg |
-| `90-oplus-camera-module.sh` | OnePlus camera as an APatch/Magisk module, built from `oos/` (section 7) | host |
+| `90-oplus-camera-module.sh` | Experimental OnePlus camera KernelSU ZIP built from `oos/` (section 7) | host |
 
 **Path that worked on a PHB110:** `10` → `20` → `50` → bootloader: `fastboot flash recovery lineage/recovery.img`, boot Recovery → Advanced → Enter fastboot → `30` → `40` → recovery: Format data → bootloader: `fastboot --set-active=a` → `45` → OxygenOS boots with IMEI → `55` → LineageOS 24.0 works. The earlier failed attempt (sideload straight after `wipe-super`, then "drops to bootloader") was never root-caused.
 
@@ -67,7 +69,7 @@ Host tools: `scripts/00-host-tools.sh` downloads `adb`/`fastboot` (platform-tool
 
 ## 3. Back up everything before touching firmware
 
-**Note on what backs up what:** step 1 below extracts the downloaded CN **zip** — it never touches the phone, it's just the stock images as reference/restore material. Step 3 is the real phone backup: it `dd`s every partition straight off the live, rooted device. If the phone's current state differs from stock (previous mods, OEM A/B drift, etc.), step 3 is what actually captures that — step 1 only gives you a generic "known good CN build" to fall back to.
+**What the backups mean:** step 1 extracts firmware from a downloaded CN **zip**. Step 3 captures this phone's live partitions. Neither is a generic rollback or full-restore source. Per-device images are retained only for private, read-only investigation or assessment by authorized service; quarantine them as described below. A byte-identical backup does not prove that replaying it remains compatible with protected state elsewhere.
 
 1. `tools/payload-dumper-go -o backup/cn-stock/ <ColorOS_CN_full.zip>` (point it at the zip, or the `payload.bin` inside it).
    **Check:** `backup/cn-stock/` contains `init_boot.img boot.img vendor_boot.img xbl_config.img modem.img system.img` and others.
@@ -87,7 +89,7 @@ Host tools: `scripts/00-host-tools.sh` downloads `adb`/`fastboot` (platform-tool
    ```
    (`adb pull` doesn't expand remote wildcards itself — `adb shell ls` resolves the exact filename on-device first.)
    - Phone boots into Android. Open the Magisk app, grant root to the adb shell when prompted (or add it manually under Magisk → Superuser).
-3. This is the actual device backup — capture the partition list, then dump everything except `userdata`/`super` and the whole-disk `sda`–`sdf` entries straight off the live phone. Safe to rerun: partitions already dumped at full size are skipped, partial dumps are redone.
+3. Capture the partition list, then dump everything except `userdata`/`super` and the whole-disk `sda`–`sdf` entries. **`backup/device/` is a temporary collection folder, not a restore set.** The loop and `scripts/10-backup-device.sh` skip complete dumps and redo partial ones; after collection, the mandatory separation below must happen before flashing. Do not rerun the backup script as a recovery operation or mix snapshots from different dates.
 ```
 adb shell -T su -c id   # must print uid=0
 adb shell -T su -c 'ls -1 /dev/block/by-name' | tr -d '\r' > logs/partitions.txt
@@ -108,8 +110,26 @@ done < logs/partitions.txt
 for p in persist modemst1 modemst2 fsg fsc; do [[ -s backup/device/$p.img ]] || echo "MISSING: $p"; done
 ```
    (`</dev/null` on the adb calls matters: without it adb reads the loop's stdin and silently eats the rest of the partition list.)
-   **Check:** no `MISSING:` lines; every `backup/device/*.img` is non-empty (`persist.img` should be tens of MB). Copy the whole `backup/` folder to a second disk before continuing.
-   - **`super` is excluded above deliberately** — it's ~12–16 GB and normally reconstructable from `backup/cn-stock/*.img` (step 1). **Required instead whenever you don't have an exact-build-match `backup/cn-stock/`** (so it isn't a true match for this phone's current `system`/`vendor`) — which is the likely case given CN ColorOS archival is thin: `adb exec-out "su -c 'dd if=/dev/block/by-name/super bs=4M 2>/dev/null'" > backup/device/super.img`. Restore later via fastbootd: `fastboot flash super backup/device/super.img`.
+   **Check before separation:** no `MISSING:` lines; every captured image is non-empty (`persist.img` should be tens of MB). Keep the original checksum manifest as a record of this snapshot. Copy the archive to a second private disk; do not upload it.
+   - **`super` is excluded above deliberately** — it's ~12–16 GB. If the original logical images are unavailable, retain a private snapshot for offline reference: `adb exec-out "su -c 'dd if=/dev/block/by-name/super bs=4M 2>/dev/null'" > backup/device/super.img`. This captures the current logical layout and contents; it is **not** a restore recipe. Do not flash it back as a generic recovery step or include it in a whole-backup restore.
+
+   **Mandatory backup separation before flashing:**
+   - Resolve source folders before moving anything: in the existing workstation backup, `backup/device` is a symlink to `backup/cn-stock`. They are one source, not independent copies. Resolve and deduplicate aliases locally, record the relationship, and operate on each real source directory only once.
+   - Move **every protected per-device image** listed in the hard rules and section 4.1—including the slotted `qweslicstore_a/_b` images—into a private `backup/per-device-DO-NOT-RESTORE/<source-snapshot>/` archive. Its real directory must be separate from all resolved flashing-input directories, not another alias of them. Preserve original filenames and manifests; never overwrite an existing archived snapshot.
+   - If genuinely separate copies exist in `backup/cn-stock/`, `oos/`, or another flashing input folder, quarantine each source separately. Preserve provenance rather than inferring it from folder names or treating symlink aliases as independent backups.
+   - Leave the explicitly documented CN `oplusstanvbk_a.img` and `oplusstanvbk_b.img` modem-fix inputs at their existing `backup/device/` paths. This narrow exception does not apply to EFS/security/calibration images. Do not move protected images back to satisfy a tool or recovery recipe.
+   - Keep checksum manifests alongside each archived snapshot and update path records locally after moving files. If collection is rerun, repeat this separation; the existing backup script writes to the flat collection folder.
+   - Separation reduces accidental wildcard flashing; it does **not** make all remaining firmware safe to restore. Never pass the archive to `fastboot`, `dd`, a full-restore script, or a third-party flasher.
+
+   **Why even this phone's own backup is not a safe reset:** Qualcomm SFS protects object/index versions and integrity state through RPMB. If that protected state advanced after a backup, replaying older filesystem objects can fail authentication. This is stale secure-state rejection, not RPMB itself "breaking"; booting once does **not** automatically cause it. We have **not proved** it caused this phone's attestation failure. See [Qualcomm storage security](https://docs.qualcomm.com/doc/80-70014-11/topic/secure-file-system.html) and its [secure-storage whitepaper, SFS rollback protection](https://www.qualcomm.com/content/dam/qcomm-martech/dm-assets/documents/guard_your_data_with_the_qualcomm_snapdragon_mobile_platform2.pdf).
+
+   **Runtime state is not factory provisioning:** some TA-owned runtime data may be recreated through a supported reset workflow. That does not recreate factory attestation keys/certificates or prove an opaque secure-store directory is disposable. Do not delete secure-store files as an experiment.
+
+   **Never attempt RPMB erase or reprovisioning**, including QFIL/EDL/firehose erase options, OEM RPMB commands, or third-party unbrick-tool features. Qualcomm documents RPMB key provisioning as one-time and non-overwritable; these are not identity-reset procedures and can destroy access to protected data. No verified local factory-attestation repair has been established for this phone.
+
+   **RPMB is not in this dump:** the backup loop reads ordinary `/dev/block/by-name` partitions, not the separately accessed authenticated RPMB storage. Replaying these `.img` files cannot directly restore or reset RPMB. Filesystem-backed secure state can nevertheless be stale relative to its RPMB-protected integrity state.
+
+   **Attestation failure does not establish damaged identity:** the standalone tests show working ordinary hardware crypto but failing default attestation. A [OnePlus 13/15 experiment](https://wuxianlin.com/2025/11/12/oneplus-13-15-attestation-rkp-test/) reports similar unlock-state-dependent unavailability. That is a credible hypothesis, **not a confirmed PHB110 diagnosis**; restore damage and physical damage remain unproved. Do not authorize a mainboard replacement based on `-49` alone, and never test by relocking or writing attestation/provisioning state. See the [current measured findings](LineageOS_KSUN_SUSFS/docs/play-integrity-debug.md#what-we-verified-2026-10-22).
 4. Firmware-downgrade check — this is the actual go/no-go, since Qualcomm's fuse anti-rollback counter isn't readable by any tool here. Extract the OOS payload first, since the secondary check below needs its `vbmeta.img`:
    ```
    tools/payload-dumper-go -o oos/ <OxygenOS_full.zip>
@@ -151,8 +171,8 @@ If the count is lower than the number of names (the current slot is missing logi
 
 Flash rule, derived from this phone's own partition list (`logs/partitions.txt` from step 3.3) instead of a hand-kept skip list:
 - **Logical** (in `$logical`) → current slot, in fastbootd (4.4).
-- **Slotted physical** (the phone has `<name>_a`) → `--slot=all`, in the bootloader (4.3). OTAs replace these, so overwriting them is expected. **Exception: `oplusstanvbk`** stays CN on PHB110. It has to match the unslotted CN `ocdt`, and the OOS copy crash-loops the modem (see "PHB110 modem crash loop" below).
-- **Unslotted** (no `_a`/`_b` on the phone) → **never flashed**. On this phone that's the per-device state: EFS/IMEI (`persist`, `modemst1`, `modemst2`, `fsg`, `fsc`), NV backups (`oplusdycnvbk`, `oplusreserve1`–`5`, `mdm1oemnvbktmp`), board/calibration (`cdt`, `ocdt`, `ddr`, `dinfo`, `param`), security/keys (`devinfo`, `secdata`, `storsec`, `keystore`, `spunvm`, `qmcs`, `tzsc`, `uefivarstore`, `frp`, `apdp*`), and the rest. If one turns up in the payload, it's reported and left alone.
+- **Slotted physical** (the phone has `<name>_a`) → only eligible firmware from a compatible package may be flashed to both slots. A slot suffix does **not** override the protected-state list: never flash `qweslicstore_a/_b`. **Exception: `oplusstanvbk`** stays CN on PHB110 and has only the narrow documented modem repair. Its CN copy must match the unslotted CN `ocdt`; the OOS copy caused the recorded modem crash loop.
+- **Unslotted** (no `_a`/`_b` on the phone) → **NEVER flash, restore, erase, or format per-device state**. On this phone these include EFS/IMEI (`persist`, `modemst1`, `modemst2`, `fsg`, `fsc`), NV backups (`oplusdycnvbk`, `oplusreserve1`–`5`, `mdm1oemnvbktmp`), board/calibration (`cdt`, `ocdt`, `ddr`, `dinfo`, `param`), security/keys (`devinfo`, `secdata`, `storsec`, `keystore`, `spunvm`, `qmcs`, `tzsc`, `uefivarstore`, `frp`, `apdp*`, `ssd`), and VM state (`vm-persist`, `vm-data`). Quarantine their backups under `backup/per-device-DO-NOT-RESTORE/`; if a payload contains them, leave the phone's copies untouched. RPMB must not be reset or reprovisioned as an experiment either.
 
 **4.2 — dry run.** Prints the exact commands, touches nothing:
 
@@ -205,14 +225,14 @@ Continue only on `all physical flashes OK`. Don't reboot to Android if anything 
   fastboot reboot
   ```
   This brings the IMEIs back. Check: `adb shell su -c 'dmesg' | grep -c 'qsf_init failed'` prints 0.
-- **Ruled out by testing:** the modem image (CN modem, hash-identical to the dump, still crashed with the OOS `oplusstanvbk`), `engineering_cdt` (CN and OOS copies both fine; keep the OOS one to match the installed build), and the modem storage (`modemst1`/`modemst2`/`fsg`/`fsc` hashes matched the dump; swapping `modemst2` changed nothing).
+- **Historical experiments, not instructions:** changing the modem image, `engineering_cdt`, and `modemst2` did not fix that recorded crash. The successful repair was the specific CN `oplusstanvbk` restoration. Do not repeat the `modemst2` experiment or restore EFS/security state.
 - **Keep OOS automatic updates off.** An OTA rewrites `oplusstanvbk`, and the crash comes back.
 
 **Notes for root work on this phone:**
 - Multi-command root scripts go to `su` on stdin: `adb shell -T su <<'EOF' … EOF`. With `adb shell su -c '…; …'` the quotes are lost on the way through adb, the device's `sh` splits the commands, and only the first one runs as root.
-- OPLUS keeps physical partitions read-only at the block layer. For a root `dd` restore, run `blockdev --setrw <dev>` first and `blockdev --setro <dev>` after. Fastboot flashes aren't affected.
+- Do not bypass a partition's block-layer write protection to restore per-device/security-state images. Neither `dd` nor fastboot is an exception to the hard rules.
 - Never `dd` boot-chain or anti-rollback-relevant partitions (`xbl*`, `abl`, `tz`, `hyp`, `aop*`, `devcfg`, `keymaster`, `uefi*`, `shrm`, `cpucp`, `qupfw`, `featenabler`).
-- Keep `backup/device/` exactly as dumped in Task 3. Put test snapshots in `backup/scratch/`, because the `*.img` globs in the Task 3 dump loop and in the restore row of the risks table would otherwise pick them up.
+- Keep per-device images in `backup/per-device-DO-NOT-RESTORE/`, separate from `backup/device/`, `backup/cn-stock/`, and `oos/`. Preserve dated snapshots; put disposable test outputs in `backup/scratch/`. Never use a `*.img` glob as a restore selection.
 
 **4.4 — fastbootd: logical, current slot, then wipe.** Logical partitions go to the current slot only, unlike physical: they share `super`, which on this Virtual A/B phone holds one full set (~9.8 GB of OOS images) plus snapshot space, not two; a stock OTA also writes only one slot; and the LineageOS sideload in step 5 replaces the inactive slot's logical layout anyway.
 
@@ -238,7 +258,7 @@ If a logical flash fails with "not enough space": `fastboot delete-logical-parti
 - `*#06#` IMEIs still match `logs/imei-before.txt`. Place a call, send an SMS, confirm mobile data and WiFi.
 - `adb shell getprop ro.build.display.id > logs/oos.txt`
 - Remove any Google account now (clears FRP before you wipe into LineageOS).
-- If it bootloops: redo this whole section pointing at `backup/cn-stock/` instead of `oos/` to get back to a known-good state, then figure out what went wrong before retrying. (`fastboot set_active other` won't help — both slots already got the same firmware.) **Anti-rollback risk:** this flashes older CN `xbl`/`abl`/`tz`. If the OOS boot chain already raised the fused rollback counter, that hard-bricks the phone. Use it only for a bootloop right after 4.3, never as a diagnostic step once OOS has booted.
+- If it bootloops: **stop; do not reflash the entire ColorOS backup or replay section 4 against `backup/cn-stock/`.** Identify the failed partition and establish a compatible recovery set first. Never restore the protected per-device archive. Older boot-chain firmware can violate rollback requirements after newer firmware has booted; changing slots is not a guaranteed fallback when both slots were overwritten.
 
 ### 4.5 — Recovery: reset `super` and reinstall OxygenOS logical partitions
 
@@ -296,7 +316,7 @@ Use this when OxygenOS won't boot after a LineageOS attempt, or when `super` hol
 
 **What actually restored boot on PHB110** (after a failed LineageOS attempt; phone went straight to the bootloader every boot):
 1. **`my_company` / `my_preload` recreated.** They're factory-only — no OTA (global or CN) ships them — and they had been deleted. Source: a PHB110 factory/9008 package (e.g. daxiaamu's OnePlus 11 folder), not an OTA. Create `_a` at image size + `_b` at 1 byte, flash `_a`.
-2. **Physical partitions reflashed from LineageOS recovery's fastbootd**, skipping `recovery`. Slot `a` still had LineageOS's `boot`/`dtbo`/`init_boot`/`vbmeta`/`vendor_boot` from Task 5; an earlier reflash had written nothing (`Could not check if partition … has slot` = phone not answering). Verify with `grep -c '^Writing.*OKAY' logs/restore-physical.log` ≈ 62 before moving on.
+2. **Historical slotted firmware reflash from LineageOS recovery's fastbootd**, skipping `recovery`. For a firmware reflash under section 4.3, the input is only the compatible slotted firmware set from `oos/`—never unslotted/per-device images or a whole `backup/device/` restore. The CN `oplusstanvbk_a/_b` repair remains the separate documented exception. Slot `a` still had LineageOS boot-chain images from Task 5; an earlier reflash had written nothing (`Could not check if partition … has slot` = phone not answering). The recorded successful writes are in `logs/restore-physical.log`; they do not establish that every historical restore was safe.
 3. **Data formatted in LineageOS recovery** (Factory Reset → Format data). `fastboot -w` in fastbootd only erases `userdata`/`metadata` (`not automatically formatting`).
 4. `fastboot --set-active=a` from the bootloader (resets slot `a`'s retry/unbootable flags), then reboot.
 
@@ -398,9 +418,29 @@ Usually not needed: every LineageOS update already rewrites the bundled CPH2449 
 
 **Root: APatch** (patches `boot`, never `init_boot`; runs Magisk-format modules). Install: APatch app → tap the "KernelPatch: not installed" card → Patch → select the installed build's stock `boot.img` → set the SuperKey (8–63 random chars; it's the password for kernel root, nothing generates it) → `fastboot flash boot apatch_patched_*.img` → open the app, enter the same SuperKey. Leave "embed KPM" empty. Each LineageOS update boots the other slot without root or modules: Updater → Install → reboot → patch the new build's `boot.img` → `fastboot flash boot <patched>` → reboot. Rescue from a bad module: `fastboot flash boot <the installed build's boot.img>` (unpatched). Less detectable alternative: KernelSU Next LKM + SUSFS (patches `init_boot`; untested on the LineageOS kernel). Play Integrity: BASIC is realistic. Never relock.
 
-**OnePlus camera (experimental).** `scripts/90-oplus-camera-module.sh` builds `build/oplus-camera/OplusCamera-module.zip` from `oos/` (OplusCamera + OplusAppPlatform as priv-apps, ~35 OPLUS libs plus whatever they link against from `my_product`, OPLUS framework jars declared as shared libraries, a priv-app permission whitelist). Reads only the needed files from the images (needs erofs-utils ≥ 1.7). Install in APatch → Modules. Expect partial function: even built into crDroid, portrait and night mode were broken ([XDA](https://xdaforums.com/t/oplus-camera-and-custom-roms.4657206/)). The script warns about missing files, a platform `sharedUserId` or unresolved `<uses-library>`, each of which stops the app installing. Fallback: a GCam port ([XDA OnePlus 11 GCam](https://xdaforums.com/t/gcam-for-op-11.4553669/)).
+**OnePlus camera (experimental).** `scripts/90-oplus-camera-module.sh` builds `build/oplus-camera/OplusCamera-module.zip` from `oos/` (OplusCamera, native libraries and camera SDK jars). The OOS framework wrapper DEX is appended **only to the camera's optional SDK jar**, not LineageOS's boot classpath. `OplusAppPlatform` is omitted because its OEM-signed `android.uid.system` cannot join LineageOS's platform UID. Install through KernelSU Manager → Modules and reboot; a mount metamodule such as Hybrid Mount is required. In KernelSU's `com.oplus.camera` App Profile disable **Umount modules** without granting root: otherwise the process cannot read its mounted APK and crashes before app initialization. That per-app setting removed the first crash; the new SDK jar addresses a subsequent missing-class exception, but has not been runtime-tested. Further ColorOS framework dependencies may still crash, and portrait/night modes were broken even in a crDroid port ([XDA](https://xdaforums.com/t/oplus-camera-and-custom-roms.4657206/)). If unstable, disable the module and reboot; a GCam port is the fallback ([XDA OnePlus 11 GCam](https://xdaforums.com/t/gcam-for-op-11.4553669/)).
 
 ---
+
+## 8. Optional return to PHB110 ColorOS with OplusEdlTool v2
+
+**Not yet cleared to flash.** This is a conditional recovery path, not an attestation repair. If the bootloader and fastbootd work, a reviewed full PHB110 ColorOS 16 package avoids the Android 13 downgrade; do not run the OOS-specific scripts in section 4 unchanged against the CN package. The [open-source OplusEdlTool v2](https://github.com/salokrwhite/OplusEdlTool) supports selected partitions and assembling `super`. The [newer v3/v4 downloads](https://static-tcdn.anteasy.com/xasdun/upload-log/oet-upload.html) are not described by v2's source. Do not assume their selection or patch behavior matches.
+
+### Before entering EDL: all gates must pass
+
+1. Preserve user data separately: this route can require formatting `userdata`. Keep the existing private backup untouched and **outside** the flasher's input directory. `../oneplus/backup/device` aliases `../oneplus/backup/cn-stock`: they are not two backups, and neither is a restore set. Never feed either path to OplusEdlTool.
+2. Use the **PHB110 domestic**, not CPH2449, package. The downloaded `/games/oneplus/PHB110domestic_11_A.29_2023101920110124.zip` is 9,832,603,307 bytes; its MD5 `e7c1df282cb26c9653d3b1aa3f391280` matches the [distributor's listing](https://androidfilehost.com/?fid=16385555061192796021), which does not establish authenticity. Its `IMAGES/` contains `prog_firehose_ddr.elf`, two `DigestsToSign_*.bin.mbn` files, `sign_client`, rawprogram XMLs and patch XMLs; no detached signature `.bin` was identified in the archive. OplusEdlTool v2 requires **programmer + matching digest + signature** to enter Firehose. The included `sign_client` does not prove a valid signature can be obtained. **Stop before entering EDL until this exact PHB110 loader triplet is independently verified**; do not substitute a programmer from another model.
+3. Have the **PHB110 CN upgrade packages before downgrading**. A [ColorOS 16 full-package listing](https://yun.daxiaamu.com/OnePlus_Roms/%E4%B8%80%E5%8A%A0OnePlus%2011/ColorOS%20PHB110_16.0.5.701(CN01)%20H.11/) exists, but an accepted A.29→16 path has not been verified. Check each OTA's `META-INF/com/android/metadata`: `pre-device` must match the stock A.29 build's `ro.product.device` (which need not equal the PHB110 model name); an incremental package's `pre-build`/`pre-build-incremental` must match the installed build. Do not assume a direct jump to 16.
+4. Audit **all** effective writes from this exact archive offline: rawprogram entries, GPT writes, `patch*.xml` sector edits and any tool-generated `super`. Whitelist only verified stock software/firmware and a complete compatible `super`; never use Select All or whole-LUN flashing. Exclude every per-device/security-state partition named in the hard rules above, including `persist`, EFS, `ocdt`, `keystore`, `secdata`, `tzsc`, `storsec`, `qweslicstore_a/_b`, and RPMB. Preserve this phone's CN `oplusstanvbk_a/_b` with its CN `ocdt`. A `persist` prompt and **Protect LUN5** do not protect the other LUNs. Never select Default NV, erase/reset secure storage, or restore images from the private backup.
+5. **Critical v2 caveat:** `patch0.xml` and `patch5.xml` each contain 26 patch entries; their target sectors have not been audited. Both Start Flash and Write Selected can apply `patch*.xml` for the loaded rawprogram files *regardless of unchecked partition rows* ([v2 code](https://raw.githubusercontent.com/salokrwhite/OplusEdlTool/main/MainWindow.axaml.cs)). Do not press either button unless every patch is audited and cannot touch excluded state. Skipping all patches is not automatically safe either: the package might require a GPT/bootability patch. If the necessary patches cannot be constrained, **stop**; no verified safe click-through exists for this package yet.
+
+### EDL entry and conditional flashing
+
+With the tool, images and approved write plan ready, a booted phone can try `adb reboot edl`. Alternatively, power it off, disconnect USB, then hold **Volume Up + Volume Down + Power while plugging in USB**, as described in the [OP11 EDL thread](https://xdaforums.com/t/op11-edl-downloadtool-to-restore-your-device-to-oxygenos-coloros.4607995/). The screen stays black. Confirm **Qualcomm HS-USB QDLoader 9008** (`05c6:9008`); `05c6:900e` is crash-dump mode, not EDL. Entering 9008 does not itself flash anything.
+
+On Windows, v2's documented flow is: select the matching programmer/digest/signature, enter Firehose, load the PHB110 ROM folder or OFP, select **None** rather than its default file-present rows, then select only the audited stock software entries and complete `super`. Cross-check the actual selected rows, LUNs, GPT and patch operations against the approved write plan **before** Start Flash/Write Selected. An unverified loader, unreviewed patch, automatic protected-state write, or unexpected tool output is a stop condition. There is no tested PHB110 write plan in this manual; do not treat this paragraph as authorization to click Start.
+
+After a successful, reviewed stock-software flash, leave the bootloader **unlocked**. Boot ColorOS 13, perform its required userdata format if necessary, verify model/build, `super` layout, IMEIs, calls, data, Wi-Fi, fingerprint and camera. Then use the stock updater with signed **PHB110 CN** full/incremental OTAs accepted by the currently installed build, checking the next package's preconditions at each step. A [full OTA may bridge builds but an incremental OTA needs its exact source build](https://source.android.com/docs/core/ota/tools); online update availability is not guaranteed. Stop at the first rejected update rather than force an incompatible one. Reaching stock ColorOS 16 does not prove that default KeyMint attestation `-49` is fixed, and neither EDL nor OTA restores factory secure state.
 
 ## Why these specific risks matter
 
@@ -409,9 +449,9 @@ Usually not needed: every LineageOS update already rewrites the bundled CPH2449 
 | Firmware downgrade CN→OOS | Step 3.4's go/no-go on Android major + security-patch date — the real gate; EDL rescue exists for this device but needs an EDL cable/test-point entry and the exact firehose package, so don't treat it as a routine fallback |
 | `super` out of space in fastbootd | Step 4 deletes `-cow` snapshots up front; "not enough space" on a logical flash → delete the inactive slot's copy, retry |
 | Slots diverge → bootloop | `--slot=all` on every slotted physical partition in step 4 |
-| Payload overwrites per-device state | Step 4 only flashes partitions this phone has as `_a`/`_b`; unslotted ones (EFS, NV backups, calibration, keys) are never written. Exception handled explicitly: slotted `oplusstanvbk` is kept CN (`KEEP-CN`) |
+| Payload or full restore overwrites per-device state | Absolute no-write rule for unslotted EFS/security/calibration partitions and RPMB; quarantine images under `backup/per-device-DO-NOT-RESTORE/`. Only the specific slotted CN `oplusstanvbk` modem fix is documented here. |
 | Modem crash loop / no IMEI on OOS | OOS `oplusstanvbk` doesn't match CN `ocdt`. Restore CN `oplusstanvbk_a`/`_b` from `backup/device/` (4.3), and keep OOS OTAs off |
-| IMEI/EFS lost | Restore from `backup/device/*.img` via `dd` under root — this is the live-device backup, not the zip extraction |
+| IMEI/EFS or attestation failure | Stop and collect read-only evidence. **Never restore any image from `backup/device/` except the documented CN `oplusstanvbk_a/_b` modem fix. Never restore protected per-device/security-state images or reset RPMB.** Retain private backups for authorized-service assessment; there is no verified local identity-reset procedure for this phone. |
 | VoLTE/VoWiFi never provisioned | Checked on CN stock in step 2.1, re-checked on OOS in step 4 |
 | Relocking the bootloader | Never do it |
 | FRP lock after LineageOS install | Google account removed from OOS in step 4 |

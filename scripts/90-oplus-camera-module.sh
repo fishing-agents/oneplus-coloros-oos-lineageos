@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a systemless APatch/Magisk/KernelSU module that adds the OnePlus camera (OplusCamera) to LineageOS.
+# Build a systemless KernelSU module with the OnePlus camera from OOS images.
 # Sources: this repo's oos/ images (CPH2449 OxygenOS, >= 16.0.5.1301 = the build LineageOS's camera HAL comes from).
 # File list based on ehhhSenpai/proprietary_vendor_oplus_camera (OOS 14.0.0.401); files are looked up by name in
 # the OOS 16 images, so moved files are still found. Nothing is extracted in full: only the needed files are read
@@ -51,12 +51,10 @@ get() {  # <img> <path> <out>
   [[ -s $3 ]] || { rm -f "$3"; return 1; }
 }
 
-# --- 1. apps (privileged, systemless under /system_ext/priv-app)
+# --- 1. app (privileged, systemless under /system_ext/priv-app)
 missing=()
 get my_product /app/OplusCamera/OplusCamera.apk "$M/system/system_ext/priv-app/OplusCamera/OplusCamera.apk" ||
   die "OplusCamera.apk not in oos/my_product.img /app/OplusCamera"
-get system_ext /priv-app/OplusAppPlatform/OplusAppPlatform.apk "$M/system/system_ext/priv-app/OplusAppPlatform/OplusAppPlatform.apk" ||
-  missing+=(OplusAppPlatform.apk)
 
 # --- 2. libraries: the known list, then everything they link against that only exists in my_product
 mp_libs=$(ls_dir my_product /lib64); se_libs=$(ls_dir system_ext /lib64)
@@ -64,8 +62,8 @@ want=(libAPSClient-cmd-jni.so libAPSClient-jni.so libAncFilter_jni.so libAncHumB
   libAncHumanDoubleExposure-jni.so libAncHumanRetain-jni_v2.so libAncHumanSegFigureFusion-jni.so libAncHumanVideo-jni.so
   libApsFaceBeautyPreviewProductJni.so libAvatarEngineRender.so libAvatarEngineRenderNative.so libCombineLut.so
   libCombineLutJni.so libFileExtender-jni.so libOplusBlurPreviewJNI.so libSuperTextWrapper.so libXDocProcessSDK-jni.so
-  libXDocProcessSDK.so libYTCommon.so libarcsoft_wideselfie.so libcolorx-loader.so libcolorx.so libcoolex.so
-  libextendfile.so libjni_wideselfie.so libjnisingleblur_api.so libjnistblur_api.so libmpbase.so
+  libXDocProcessSDK.so libYTCommon.so libarcsoft_wideselfie.so libextendfile.so
+  libjni_wideselfie.so libjnisingleblur_api.so libjnistblur_api.so libmpbase.so
   libsingle_camera_bokeh_native.so libst_mobile.so libst_sticker_jni.so
   libHeifEncoderWrapper.so libNativeWinBuffExchange.so liboplusheifwriter.so)
 L=$M/system/system_ext/lib64
@@ -93,15 +91,19 @@ while ((added)); do
   done
 done
 
-# --- 3. framework jars + permission/default-grant xmls
+# --- 3. framework jars and permission XML
 F=$M/system/system_ext/framework
 for j in com.oplus.camera.unit.sdk.adapter com.oplus.camera.unit.sdk; do
   get my_product "/product_overlay/framework/$j.jar" "$F/$j.jar" || missing+=("$j.jar")
 done
-get system /framework/oplus-support-wrapper.jar "$F/oplus-support-wrapper.jar" || missing+=(oplus-support-wrapper.jar)
-get my_product /product_overlay/etc/permissions/oplus_camera_default_grant_permissions_list.xml \
-  "$M/system/system_ext/etc/default-permissions/oplus_camera_default_grant_permissions_list.xml" ||
-  missing+=(oplus_camera_default_grant_permissions_list.xml)
+# The camera calls OOS framework wrappers absent from LineageOS. Add them only to
+# its optional SDK library, not to the system boot classpath.
+[[ -s $F/com.oplus.camera.unit.sdk.jar ]] || die "camera SDK jar missing"
+get system /framework/oplus-framework.jar "$W/tmp/oplus-framework.jar" || die "OOS framework jar missing"
+unzip -p "$W/tmp/oplus-framework.jar" classes.dex > "$W/tmp/classes2.dex"
+unzip -p "$W/tmp/oplus-framework.jar" classes2.dex > "$W/tmp/classes3.dex"
+[[ -s $W/tmp/classes2.dex && -s $W/tmp/classes3.dex ]] || die "OOS framework dex missing"
+zip -q -j "$F/com.oplus.camera.unit.sdk.jar" "$W/tmp/classes2.dex" "$W/tmp/classes3.dex"
 
 # Declare every jar as a shared library so <uses-library> resolves.
 P=$M/system/system_ext/etc/permissions; mkdir -p "$P"
@@ -109,7 +111,7 @@ P=$M/system/system_ext/etc/permissions; mkdir -p "$P"
   for j in "$F"/*.jar; do [[ -f $j ]] && echo "    <library name=\"$(basename "$j" .jar)\" file=\"/system_ext/framework/$(basename "$j")\" />"; done
   echo '</permissions>'; } > "$P/oplus-camera-libraries.xml"
 
-# Whitelist every requested permission for the priv-apps. Missing entries would make an enforcing build refuse to boot.
+# Whitelist requested privileged permissions for the packaged camera app.
 { echo '<?xml version="1.0" encoding="utf-8"?>'; echo '<permissions>'
   for apk in "$M"/system/system_ext/priv-app/*/*.apk; do
     pkg=$(tools/aapt2 dump badging "$apk" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
@@ -124,39 +126,28 @@ cam="$M/system/system_ext/priv-app/OplusCamera/OplusCamera.apk"
 pkg=$(tools/aapt2 dump badging "$cam" | sed -n "s/^package: name='\([^']*\)' versionCode='\([^']*\)' versionName='\([^']*\)'.*/\1 \3/p")
 echo "OplusCamera: $pkg"
 suid=$(tools/aapt2 dump xmltree --file AndroidManifest.xml "$cam" | sed -n 's/.*sharedUserId.*="\([^"]*\)".*/\1/p')
-if [[ -n $suid ]]; then echo "WARNING: sharedUserId=$suid -> a platform uid (android.uid.system) means it won't install on LineageOS"; fi
+[[ -z $suid ]] || die "OplusCamera requires sharedUserId=$suid, which cannot join LineageOS's platform UID"
 for u in $(tools/aapt2 dump badging "$cam" | sed -n "s/^uses-library:'\([^']*\)'/\1/p"); do
   [[ -f $F/$u.jar ]] || echo "WARNING: required library '$u' not provided -> package install fails until it is added"
 done
 if ((${#missing[@]})); then echo "not found in the OOS images (may be renamed/dropped in OOS 16): ${missing[*]}"; fi
 
-# --- 5. module metadata + zip
+# --- 5. module metadata + zip (KernelSU Manager installs module.prop + system/ directly)
+[[ $pkg == *' '* ]] || die "could not read OplusCamera package/version"
 cat > "$M/module.prop" <<EOF
 id=oplus_camera
 name=OnePlus Camera (OplusCamera) for LineageOS
-version=$(sed -n 's/^version_name=//p' logs/oos-build.txt 2>/dev/null || echo oos)
-versionCode=1
+version=${pkg#* }-2
+versionCode=60001
 author=local build from oos/
-description=Systemless OplusCamera + OplusAppPlatform, libs and framework jars from CPH2449 OxygenOS. Experimental.
+description=Systemless OplusCamera, libraries and framework jars from CPH2449 OxygenOS. Experimental.
 EOF
-mkdir -p "$M/META-INF/com/google/android"
-cat > "$M/META-INF/com/google/android/update-binary" <<'EOF'
-#!/sbin/sh
-umask 022
-OUTFD=$2
-ZIPFILE=$3
-. /data/adb/magisk/util_functions.sh
-install_module
-exit 0
-EOF
-echo '#MAGISK' > "$M/META-INF/com/google/android/updater-script"
 (cd "$M" && zip -qr9 ../OplusCamera-module.zip .)
 echo "built $W/OplusCamera-module.zip ($(du -h "$W/OplusCamera-module.zip" | cut -f1))"
 cat <<'EOF'
-Install:  adb push build/oplus-camera/OplusCamera-module.zip /sdcard/Download/
-          APatch app -> Modules -> Install -> pick the zip -> reboot
-Remove:   APatch -> Modules -> disable/remove -> reboot.
-Rescue if it won't boot: bootloader -> fastboot flash boot lineage/boot.img (unpatched: no root, no modules) -> boot,
-          then re-patch boot in APatch and remove the module.
-Logs:     adb logcat | grep -iE 'OplusCamera|PackageManager.*oplus|avc.*oplus'
+Install: KernelSU Manager -> Modules -> Install -> select build/oplus-camera/OplusCamera-module.zip -> reboot.
+Requires a KernelSU system-mount metamodule (for example, meta-overlayfs).
+In KernelSU's com.oplus.camera App Profile, turn off "Umount modules" without granting root;
+otherwise Android sees the APK at boot, but the camera process cannot load it.
+Remove: KernelSU Manager -> Modules -> disable/remove -> reboot.
 EOF
