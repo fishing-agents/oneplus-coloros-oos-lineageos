@@ -107,7 +107,31 @@ elseif (-not (Test-Path (Join-Path $img '*.img'))) {
 # images may sit in a subfolder (e.g. IMAGES/)
 $all = Get-ChildItem $img -Recurse -Filter *.img
 if (-not $all) { Die "no .img files under $img" }
-$byName = @{}; foreach ($f in $all) { if (-not $byName.ContainsKey($f.BaseName)) { $byName[$f.BaseName] = $f.FullName } }
+
+# Slotted physical partitions on a OnePlus 11 (logs/partitions.txt). Only these get flashed, which keeps
+# ddr, persist, static_nvbk, oplusreserve*, apdp and other unslotted or calibration data untouched.
+$Slotted = 'abl','aop','aop_config','bluetooth','boot','cpucp','devcfg','dsp','dtbo','engineering_cdt','featenabler',
+           'hyp','imagefv','init_boot','keymaster','mdtp','mdtpsecapp','modem','multiimgoem','multiimgqti','oplus_sec',
+           'oplusstanvbk','qupfw','qweslicstore','recovery','rticmpdata','shrm','splash','tz','uefi','uefisecapp',
+           'vbmeta','vbmeta_system','vbmeta_vendor','vendor_boot','vm-bootsys','xbl','xbl_config','xbl_ramdump'
+$Alias = @{ 'logo' = 'splash' }   # factory RADIO/ names
+
+$byName = @{}; $skipped = @()
+# Physical: factory packages keep partition images in RADIO/ (prefer it), the rest at any level.
+$phys = @($all | Where-Object { $_.Directory.Name -eq 'RADIO' }) + @($all | Where-Object { $_.Directory.Name -ne 'RADIO' })
+foreach ($f in $phys) {
+  $n = $f.BaseName; if ($Alias[$n]) { $n = $Alias[$n] }
+  if ($Slotted -contains $n) { if (-not $byName[$n]) { $byName[$n] = $f.FullName } }
+  elseif (($LogicalNames -notcontains ($f.BaseName -split '\.')[0]) -and ($NeverFlash -notcontains $n)) { $skipped += $f.BaseName }
+}
+# Logical: factory packages have tiny pointer stubs (my_stock.img = 30 bytes) plus the real image in a subfolder
+# (my_stock/my_stock.20961727.img). Take the largest file per partition name; ignore anything under 4 KiB.
+foreach ($p in $LogicalNames) {
+  $c = $all | Where-Object { (($_.BaseName -split '\.')[0] -eq $p) -and $_.Length -ge 4096 } | Sort-Object Length -Descending | Select-Object -First 1
+  if ($c) { $byName[$p] = $c.FullName }
+}
+foreach ($s in 'super') { $c = $all | Where-Object BaseName -eq $s | Select-Object -First 1; if ($c) { $byName[$s] = $c.FullName } }
+if ($skipped) { Say "not flashed (unslotted/calibration/duplicates): $(($skipped | Sort-Object -Unique) -join ' ')" }
 
 # my_company / my_preload exist only in factory packages; OTAs lack them. Fall back to koaaN/Universal_Flasher's copies.
 foreach ($p in 'my_company','my_preload') {
