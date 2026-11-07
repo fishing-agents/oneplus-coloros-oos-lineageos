@@ -209,10 +209,20 @@ if (-not $superImg) {
   $left = [regex]::Matches((FB getvar all).Out, 'is-logical:([^:\s]+):yes').Count
   if ($left -ne 0) { Die "$left logical partitions still present after delete" }
 
-  # OnePlus Virtual A/B layout: <name>_a full, <name>_b 1-byte placeholder (koaaN/Universal_Flasher, PHB110 tested).
+  # OnePlus Virtual A/B layout (factory super_def.json): <name>_a full size, <name>_b empty (0 bytes).
+  # _a sizes come from super_def when the package has one (right for sparse images too), else from the image.
+  $def = Get-ChildItem $img -Recurse -Filter 'super_def.*.json' | Select-Object -First 1
+  $defSize = @{}
+  if ($def) {
+    Say "sizes from $($def.Name)"
+    (Get-Content $def.FullName -Raw | ConvertFrom-Json).partitions |
+      Where-Object { $_.size } | ForEach-Object { $defSize[$_.name] = $_.size }
+  }
   foreach ($p in $logical) {
-    $a = FB create-logical-partition "${p}_a" 1
-    $b = FB create-logical-partition "${p}_b" 1
+    $size = $defSize["${p}_a"]
+    if (-not $size) { $size = (Get-Item $byName[$p]).Length }
+    $a = FB create-logical-partition "${p}_a" $size
+    $b = FB create-logical-partition "${p}_b" 0
     $f = FB flash "${p}_a" "`"$($byName[$p])`""
     if ($a.Ok -and $b.Ok -and $f.Ok) { Say "OK    $p" }
     elseif ($f.Ok -and $f.Out -match 'Invalid sparse file format') { Say "OK    $p (sparse warning is harmless)" }

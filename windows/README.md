@@ -15,7 +15,7 @@ On the first run it downloads platform-tools and payload-dumper-go into `windows
 - **Bootloader:** writes every physical image to both slots. Anything the bootloader refuses (e.g. `modem`) is retried in fastbootd.
 - **fastbootd:**
   - Deletes every logical partition still in `super`, including stray unslotted names and `-cow` leftovers.
-  - Creates `<name>_a` and a 1-byte `<name>_b` for each image, then flashes `_a`. This is the OnePlus Virtual A/B layout (same as koaaN/Universal_Flasher).
+  - Creates `<name>_a` and an empty (0-byte) `<name>_b` for each image, then flashes `_a`. `_a` sizes come from the package's `super_def.*.json` when present, else from the image file. This matches the factory super layout.
 - If the package has no `my_company`/`my_preload` (OTAs don't), it uses the copies from koaaN/Universal_Flasher.
 - Sets slot a active.
 
