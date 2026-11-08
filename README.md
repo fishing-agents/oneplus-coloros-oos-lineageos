@@ -23,7 +23,7 @@ Host tools: `scripts/00-host-tools.sh` downloads `adb`/`fastboot` (platform-tool
 | `20-extract.sh <cn.zip> <oos.zip>` | 3.1 + 3.4: extract both OTAs; refuses OOS older than CN or than 16.0.5.1301 | host |
 | `50-lineage-download.sh` | 5.1: newest build + `super_empty.img`, verified against the official API hashes | host |
 | `30-oos-firmware.sh` | 4.3: slotted firmware from `oos/` to both slots; keeps CN `oplusstanvbk`, own `modem`, LineageOS `recovery` | bootloader, or LineageOS-recovery fastbootd |
-| `40-oos-super.sh` | 4.5: wipe `super`, recreate `<name>_a` (full) + `<name>_b` (1 byte), flash | LineageOS-recovery fastbootd |
+| `40-oos-super.sh [-n]` | 4.5: wipe `super`, recreate `<name>_a` (super_def size) + `<name>_b` (0 bytes), flash. `-n` prints the layout and commands only, no device | LineageOS-recovery fastbootd |
 | `45-restore-stanvbk.sh` | put the CN `oplusstanvbk` back (after an OOS OTA or full-firmware flash) | fastbootd |
 | `55-lineage-install.sh` | 5.2–5.7: boot images one per bootloader session, recovery, sideload | bootloader → recovery |
 | `60-checks.sh` | IMEI-related checks: `qsf_init` crash count, `oplusstanvbk` still CN | Android |

@@ -52,8 +52,8 @@ image_raw_size() {
 
 # Size for <name>_a: super_def's size, grown to the image's raw size if a newer build is bigger.
 logical_size() {
-  local def s raw
-  raw=$(image_raw_size "$(logical_img "$1")")
+  local def s img raw=0
+  img=$(logical_img "$1") && raw=$(image_raw_size "$img")
   if def=$(super_def); then
     s=$(jq -r --arg n "${1}_a" '.partitions[] | select(.name == $n) | .size // empty' "$def")
     [[ -n $s ]] && (( s >= raw )) && { echo "$s"; return; }
