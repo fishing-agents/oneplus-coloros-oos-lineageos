@@ -30,6 +30,7 @@ if (( DRY )); then
   echo; echo "commands (fastbootd):"
   echo "fastboot snapshot-update cancel"
   echo "fastboot wipe-super lineage/super_empty.img"
+  echo "fastboot delete-logical-partition <each partition super_empty.img left>"
   for p in $LOGICAL; do
     echo "fastboot create-logical-partition ${p}_a $(logical_size "$p")"
     echo "fastboot create-logical-partition ${p}_b 0"
@@ -51,7 +52,11 @@ fastboot snapshot-update cancel || true
 fastboot create-logical-partition probe_a 4096 && fastboot delete-logical-partition probe_a ||
   die "this fastbootd can't create partitions; use LineageOS recovery's fastbootd"
 fastboot wipe-super lineage/super_empty.img
-[[ $(fastboot getvar all 2>&1 | grep -c 'is-logical:.*:yes') == 0 ]] || die "super not empty after wipe-super"
+# LineageOS's super_empty.img still lists its own partitions at size 0; drop them before recreating.
+for p in $(fastboot getvar all 2>&1 | sed -n 's/.*is-logical:\([^:]*\):yes.*/\1/p' | sort -u); do
+  fastboot delete-logical-partition "$p"
+done
+[[ $(fastboot getvar all 2>&1 | grep -c 'is-logical:.*:yes') == 0 ]] || die "logical partitions left after wipe-super"
 
 for p in $LOGICAL; do
   img=$(logical_img "$p")
