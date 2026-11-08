@@ -2,8 +2,9 @@
 # Phase 4.3 / 4.5 firmware half: flash every slotted physical partition to both slots.
 # Sources:
 #   FW list (OnePlus ColorOS<->OxygenOS conversion set, droidwin; + init_boot, which must match boot) -> $FW_SRC
-#   every other slotted partition, plus oplusstanvbk and modem    -> backup/device/<name>_a.img (this phone)
-#   recovery                                                      -> kept (LineageOS fastbootd)
+#   oplusstanvbk and modem -> backup/device/<name>_a.img (this phone)
+#   every other slotted partition -> kept: no OTA ships it, so the phone still has its own
+#   recovery -> kept (LineageOS fastbootd)
 # oplusstanvbk must stay this phone's CN copy, else the modem crash-loops.
 # Run in LineageOS-recovery fastbootd, or the bootloader (modem is refused there, which is fine).
 # usage: scripts/30-oos-firmware.sh [-n|--dry-run]      FW_SRC=backup/cn-stock for ColorOS firmware
@@ -21,7 +22,13 @@ miss=()
 : > logs/firmware-plan.txt
 for p in $(sed -n 's/_a$//p' logs/partitions.txt | sort -u); do
   [[ $p == recovery ]] && { echo "KEEP  recovery"; continue; }
-  if [[ $FW == *[[:space:]]$p[[:space:]]* ]]; then img=$FW_SRC/$p.img; else img=backup/device/${p}_a.img; fi
+  if [[ $FW == *[[:space:]]$p[[:space:]]* ]]; then img=$FW_SRC/$p.img
+  elif [[ $p == oplusstanvbk || $p == modem ]]; then img=backup/device/${p}_a.img
+  else
+    # Not in any OTA, so nothing replaced it: the phone still holds the backup's content.
+    # fastbootd can't write several of these anyway (rticmpdata: size 0, "No such file or directory").
+    echo "KEEP  $p (unchanged on the phone)"; continue
+  fi
   [[ -s $img ]] || { miss+=("$img"); continue; }
   note=""; [[ $FW_SRC != oos && $BOOTCHAIN == *" $p "* ]] && note="   # boot chain from $FW_SRC: anti-rollback risk"
   echo "fastboot flash --slot=all $p $img$note" >> logs/firmware-plan.txt

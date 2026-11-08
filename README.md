@@ -22,7 +22,7 @@ Host tools: `scripts/00-host-tools.sh` downloads `adb`/`fastboot` (platform-tool
 | `10-backup-device.sh` | 3.3: collect flat backups and checksums; **manual per-device quarantine is mandatory afterward** | Android, rooted adb |
 | `20-extract.sh <cn.zip> <oos.zip>` | 3.1 + 3.4: extract both OTAs; refuses OOS older than CN or than 16.0.5.1301 | host |
 | `50-lineage-download.sh` | 5.1: newest build + `super_empty.img`, verified against the official API hashes | host |
-| `30-oos-firmware.sh [-n]` | 4.3: conversion set (droidwin list + `init_boot`) from `oos/` (`FW_SRC=backup/cn-stock` for ColorOS), every other slotted partition plus `oplusstanvbk`/`modem` from `backup/device/`; keeps LineageOS `recovery`. `-n` prints the plan only | bootloader, or LineageOS-recovery fastbootd |
+| `30-oos-firmware.sh [-n]` | 4.3: conversion set (droidwin list + `init_boot`) from `oos/` (`FW_SRC=backup/cn-stock` for ColorOS), `oplusstanvbk`/`modem` from `backup/device/`; other slotted partitions (`rticmpdata`, `mdtp`, …) are left as they are; keeps LineageOS `recovery`. `-n` prints the plan only | bootloader, or LineageOS-recovery fastbootd |
 | `41-restore-oos.sh [-n] [--keep-recovery]` | 4.3 + 4.5 in one run from the bootloader: LineageOS `recovery` to both slots (skipped with `--keep-recovery`), its fastbootd, `30-oos-firmware.sh`, `40-oos-super.sh`, slot a. One confirmation; `-n` prints both plans only | bootloader |
 | `40-oos-super.sh [-n]` | 4.5: wipe `super`, recreate `<name>_a` (super_def size) + `<name>_b` (0 bytes), flash. `-n` prints the layout and commands only, no device | LineageOS-recovery fastbootd |
 | `45-restore-stanvbk.sh` | put the CN `oplusstanvbk` back (after an OOS OTA or full-firmware flash) | fastbootd |
