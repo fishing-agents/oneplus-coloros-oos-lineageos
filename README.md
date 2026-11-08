@@ -24,7 +24,7 @@ Host tools: `scripts/00-host-tools.sh` downloads `adb`/`fastboot` (platform-tool
 | `50-lineage-download.sh` | 5.1: newest build + `super_empty.img`, verified against the official API hashes | host |
 | `30-oos-firmware.sh` | 4.3: slotted firmware from `oos/` to both slots; keeps CN `oplusstanvbk`, own `modem`, LineageOS `recovery` | bootloader, or LineageOS-recovery fastbootd |
 | `40-oos-super.sh` | 4.5: wipe `super`, recreate `<name>_a` (full) + `<name>_b` (1 byte), flash | LineageOS-recovery fastbootd |
-| `45-restore-stanvbk.sh` | restore **only** this phone's CN `oplusstanvbk_a/_b` from their existing `backup/device/` paths; never other per-device images | fastbootd |
+| `45-restore-stanvbk.sh` | put the CN `oplusstanvbk` back (after an OOS OTA or full-firmware flash) | fastbootd |
 | `55-lineage-install.sh` | 5.2–5.7: boot images one per bootloader session, recovery, sideload | bootloader → recovery |
 | `60-checks.sh` | IMEI-related checks: `qsf_init` crash count, `oplusstanvbk` still CN | Android |
 | `70-network.sh` | captive-portal probes + NTP that work in China and abroad (section 7) | Android |
@@ -267,7 +267,7 @@ Use this when OxygenOS won't boot after a LineageOS attempt, or when `super` hol
 **Correct layout on PHB110 / OOS 16** (from `fastboot getvar all` in fastbootd, and matching the OnePlus fastboot flasher `koaaN/Universal_Flasher`):
 - Every logical partition is **slotted**: `<name>_a` / `<name>_b` (`has-slot:system:yes`, `is-logical:system_a:yes`). Snapshot leftovers are `<name>_a-cow` / `<name>_b-cow`. Never create unslotted names — first-stage init looks for `<name>_<slot>`.
 - 17 names: `my_bigball my_carrier my_company my_engineering my_heytap my_manifest my_preload my_product my_region my_stock odm product system system_dlkm system_ext vendor vendor_dlkm`. The OOS payload ships 15; `my_company`/`my_preload` only exist in the CN package.
-- `super` is `0x3F1B6F000` (~15.8 GiB). One full OOS set on slot `a` is ~9.8 GB, so **two full sets don't fit**. The active slot gets full-size partitions; the other slot gets **1-byte placeholders** (Virtual A/B fills it later via snapshots, e.g. the LineageOS sideload).
+- `super` is `0x3F1B6F000` (~15.8 GiB). One full OOS set on slot `a` is ~9.8 GB, so **two full sets don't fit**. The active slot gets full-size partitions; the other slot gets **empty (0-byte) entries**, exactly as the factory `META/super_def.*.json` defines them (Virtual A/B fills it later via snapshots, e.g. the LineageOS sideload). Each group (`qti_dynamic_partitions_a`/`_b`) may use all of `super` minus metadata (16936005632 bytes).
 
 **Broken-layout signature:** `getvar all` showing full-size `_b` copies (e.g. `partition-size:my_product_b:0xACB50000`) and some `_b` names missing (`system_b`, `system_ext_b`, `vendor_b`, `vendor_dlkm_b`) means a dual-slot flash filled `super`. Missing `my_company_*`/`my_preload_*` on both slots means they weren't recreated.
 
@@ -295,12 +295,14 @@ Use this when OxygenOS won't boot after a LineageOS attempt, or when `super` hol
    for p in $names; do for s in _a _b _a-cow _b-cow; do fastboot delete-logical-partition "$p$s"; done; done
    fastboot getvar all 2>&1 | grep -c 'is-logical:.*:yes'      # must be 0
    ```
-5. **Recreate**: `_a` at full image size and flashed; `_b` as a 1-byte placeholder, never flashed. Create `_a` at the real size rather than growing a 1-byte partition — host-side auto-grow depends on `is-logical`:
+5. **Recreate**: `_a` at its `super_def.*.json` size (raw size; a sparse image file is smaller) and flashed; `_b` at 0 bytes, never flashed. Create `_a` at the real size rather than growing an empty partition — host-side auto-grow depends on `is-logical`:
    ```
+   def=$(ls oos/META/super_def.*.json backup/cn-stock/META/super_def.*.json 2>/dev/null | head -1)   # empty: image sizes
    for p in $names; do
      img="oos/$p.img"; [[ -f $img ]] || img="backup/cn-stock/$p.img"; [[ -f $img ]] || { echo "skip $p"; continue; }
-     fastboot create-logical-partition "${p}_a" "$(stat -c %s "$img")"
-     fastboot create-logical-partition "${p}_b" 1
+     size=$([[ -n $def ]] && jq -r --arg n "${p}_a" '.partitions[] | select(.name == $n) | .size // empty' "$def")
+     fastboot create-logical-partition "${p}_a" "${size:-$(stat -c %s "$img")}"
+     fastboot create-logical-partition "${p}_b" 0
      fastboot flash "${p}_a" "$img"
    done 2>&1 | tee logs/flash-logical.log
    grep -Ei 'FAILED|error' logs/flash-logical.log || echo "logical flashes OK"
@@ -316,7 +318,7 @@ Use this when OxygenOS won't boot after a LineageOS attempt, or when `super` hol
 
 **What actually restored boot on PHB110** (after a failed LineageOS attempt; phone went straight to the bootloader every boot):
 1. **`my_company` / `my_preload` recreated.** They're factory-only — no OTA (global or CN) ships them — and they had been deleted. Source: a PHB110 factory/9008 package (e.g. daxiaamu's OnePlus 11 folder), not an OTA. Create `_a` at image size + `_b` at 1 byte, flash `_a`.
-2. **Historical slotted firmware reflash from LineageOS recovery's fastbootd**, skipping `recovery`. For a firmware reflash under section 4.3, the input is only the compatible slotted firmware set from `oos/`—never unslotted/per-device images or a whole `backup/device/` restore. The CN `oplusstanvbk_a/_b` repair remains the separate documented exception. Slot `a` still had LineageOS boot-chain images from Task 5; an earlier reflash had written nothing (`Could not check if partition … has slot` = phone not answering). The recorded successful writes are in `logs/restore-physical.log`; they do not establish that every historical restore was safe.
+2. **Physical partitions reflashed from LineageOS recovery's fastbootd**, skipping `recovery`. Slot `a` still had LineageOS's `boot`/`dtbo`/`init_boot`/`vbmeta`/`vendor_boot` from Task 5; an earlier reflash had written nothing (`Could not check if partition … has slot` = phone not answering). Verify with `grep -c '^Writing.*OKAY' logs/restore-physical.log` ≈ 62 before moving on.
 3. **Data formatted in LineageOS recovery** (Factory Reset → Format data). `fastboot -w` in fastbootd only erases `userdata`/`metadata` (`not automatically formatting`).
 4. `fastboot --set-active=a` from the bootloader (resets slot `a`'s retry/unbootable flags), then reboot.
 

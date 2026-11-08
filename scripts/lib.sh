@@ -28,3 +28,23 @@ logical_img() {
   return 1
 }
 
+# Factory packages ship META/super_def.<nv_id>.json; the nv_id variants differ only in nv_id.
+# SUPER_DEF overrides the lookup.
+super_def() {
+  local f
+  for f in ${SUPER_DEF:-} oos/META/super_def.*.json oos/super_def.*.json backup/cn-stock/META/super_def.*.json; do
+    [[ -f $f ]] && { echo "$f"; return; }
+  done
+  return 1
+}
+
+# Size for <name>_a: super_def's size (the raw size, right even for sparse images), else the image size.
+logical_size() {
+  local def s
+  if def=$(super_def); then
+    s=$(jq -r --arg n "${1}_a" '.partitions[] | select(.name == $n) | .size // empty' "$def")
+    [[ -n $s ]] && { echo "$s"; return; }
+  fi
+  stat -c %s "$(logical_img "$1")"
+}
+
