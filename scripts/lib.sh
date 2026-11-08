@@ -8,7 +8,7 @@ mkdir -p logs
 LOGICAL="my_bigball my_carrier my_company my_engineering my_heytap my_manifest my_preload my_product my_region my_stock odm product system system_dlkm system_ext vendor vendor_dlkm"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
-confirm() { read -r -p "$* [y/N] " a; [[ $a == [yY] ]] || die "aborted"; }
+confirm() { [[ ${YES:-} == 1 ]] && return; read -r -p "$* [y/N] " a; [[ $a == [yY] ]] || die "aborted"; }
 step() { printf '\n== %s\n' "$*"; }
 
 in_fastbootd() { [[ $(fastboot getvar is-userspace 2>&1) == *"is-userspace: yes"* ]]; }

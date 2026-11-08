@@ -27,7 +27,7 @@ for p in $(sed -n 's/_a$//p' logs/partitions.txt | sort -u); do
   echo "fastboot flash --slot=all $p $img$note" >> logs/firmware-plan.txt
 done
 cat logs/firmware-plan.txt
-(( ${#miss[@]} == 0 )) || { printf 'MISSING %s\n' "${miss[@]}"; (( DRY )) || die "missing images"; }
+(( ${#miss[@]} == 0 )) || { printf 'MISSING %s\n' "${miss[@]}"; die "missing images"; }
 (( DRY )) && exit 0
 
 grep -q 'anti-rollback' logs/firmware-plan.txt &&

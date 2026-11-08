@@ -13,7 +13,7 @@ show_layout() {
   def=$(super_def) && echo "sizes from $def" || { def=; echo "no super_def.json found; sizing _a from image files"; }
   printf '%-20s %14s  %-6s %s\n' partition bytes slot source
   for p in $LOGICAL; do
-    img=$(logical_img "$p") || img="(no image)"
+    img=$(logical_img "$p") || { img="(no image)"; (( DRY )) || die "no image for $p"; }
     s=$(logical_size "$p"); total=$((total + s))
     printf '%-20s %14s  %-6s %s\n' "${p}_a" "$s" a "$img" "${p}_b" 0 b "(empty)"
   done
