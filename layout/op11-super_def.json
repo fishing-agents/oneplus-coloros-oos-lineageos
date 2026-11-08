@@ -1,0 +1,235 @@
+{
+    "super_meta": {
+        "path": "IMAGES/super_meta.10010111.raw", 
+        "size": "65536"
+    }, 
+    "nv_text": "ALLNET", 
+    "block_devices": [
+        {
+            "block_size": "4096", 
+            "name": "super", 
+            "alignment": "1048576", 
+            "size": "16940199936"
+        }
+    ], 
+    "groups": [
+        {
+            "name": "default"
+        }, 
+        {
+            "maximum_size": "16936005632", 
+            "name": "qti_dynamic_partitions_a"
+        }, 
+        {
+            "maximum_size": "16936005632", 
+            "name": "qti_dynamic_partitions_b"
+        }
+    ], 
+    "nv_id": "10010111", 
+    "partitions": [
+        {
+            "is_dynamic": true, 
+            "path": "IMAGES/system.img", 
+            "size": "689524736", 
+            "name": "system_a", 
+            "group_name": "qti_dynamic_partitions_a"
+        }, 
+        {
+            "is_dynamic": true, 
+            "path": "IMAGES/system_ext.img", 
+            "size": "1094135808", 
+            "name": "system_ext_a", 
+            "group_name": "qti_dynamic_partitions_a"
+        }, 
+        {
+            "is_dynamic": true, 
+            "path": "IMAGES/vendor.img", 
+            "size": "1053790208", 
+            "name": "vendor_a", 
+            "group_name": "qti_dynamic_partitions_a"
+        }, 
+        {
+            "is_dynamic": true, 
+            "path": "IMAGES/product.img", 
+            "size": "2588672", 
+            "name": "product_a", 
+            "group_name": "qti_dynamic_partitions_a"
+        }, 
+        {
+            "is_dynamic": true, 
+            "path": "IMAGES/my_product.img", 
+            "size": "873156608", 
+            "name": "my_product_a", 
+            "group_name": "qti_dynamic_partitions_a"
+        }, 
+        {
+            "is_dynamic": true, 
+            "path": "IMAGES/odm.img", 
+            "size": "1549049856", 
+            "name": "odm_a", 
+            "group_name": "qti_dynamic_partitions_a"
+        }, 
+        {
+            "is_dynamic": true, 
+            "path": "IMAGES/my_engineering.img", 
+            "size": "335872", 
+            "name": "my_engineering_a", 
+            "group_name": "qti_dynamic_partitions_a"
+        }, 
+        {
+            "is_dynamic": true, 
+            "path": "IMAGES/vendor_dlkm.img", 
+            "size": "144969728", 
+            "name": "vendor_dlkm_a", 
+            "group_name": "qti_dynamic_partitions_a"
+        }, 
+        {
+            "is_dynamic": true, 
+            "path": "IMAGES/system_dlkm.img", 
+            "size": "348160", 
+            "name": "system_dlkm_a", 
+            "group_name": "qti_dynamic_partitions_a"
+        }, 
+        {
+            "is_dynamic": true, 
+            "path": "IMAGES/my_stock/my_stock.20961727.img", 
+            "size": "2369589248", 
+            "name": "my_stock_a", 
+            "group_name": "qti_dynamic_partitions_a"
+        }, 
+        {
+            "is_dynamic": true, 
+            "path": "IMAGES/my_heytap/my_heytap.18387173.img", 
+            "size": "1364291584", 
+            "name": "my_heytap_a", 
+            "group_name": "qti_dynamic_partitions_a"
+        }, 
+        {
+            "is_dynamic": true, 
+            "path": "IMAGES/my_carrier/my_carrier.18377199.img", 
+            "size": "335872", 
+            "name": "my_carrier_a", 
+            "group_name": "qti_dynamic_partitions_a"
+        }, 
+        {
+            "is_dynamic": true, 
+            "path": "IMAGES/my_region/my_region.18360132.img", 
+            "size": "3702784", 
+            "name": "my_region_a", 
+            "group_name": "qti_dynamic_partitions_a"
+        }, 
+        {
+            "is_dynamic": true, 
+            "path": "IMAGES/my_company/my_company.empty.img", 
+            "size": "335872", 
+            "name": "my_company_a", 
+            "group_name": "qti_dynamic_partitions_a"
+        }, 
+        {
+            "is_dynamic": true, 
+            "path": "IMAGES/my_preload/my_preload.18370892.img", 
+            "size": "1294344192", 
+            "name": "my_preload_a", 
+            "group_name": "qti_dynamic_partitions_a"
+        }, 
+        {
+            "is_dynamic": true, 
+            "path": "IMAGES/my_bigball/my_bigball.18941341.img", 
+            "size": "867938304", 
+            "name": "my_bigball_a", 
+            "group_name": "qti_dynamic_partitions_a"
+        }, 
+        {
+            "is_dynamic": true, 
+            "path": "IMAGES/my_manifest/my_manifest.10010111.img", 
+            "size": "532480", 
+            "name": "my_manifest_a", 
+            "group_name": "qti_dynamic_partitions_a"
+        }, 
+        {
+            "is_dynamic": true, 
+            "name": "system_b", 
+            "group_name": "qti_dynamic_partitions_b"
+        }, 
+        {
+            "is_dynamic": true, 
+            "name": "system_ext_b", 
+            "group_name": "qti_dynamic_partitions_b"
+        }, 
+        {
+            "is_dynamic": true, 
+            "name": "vendor_b", 
+            "group_name": "qti_dynamic_partitions_b"
+        }, 
+        {
+            "is_dynamic": true, 
+            "name": "product_b", 
+            "group_name": "qti_dynamic_partitions_b"
+        }, 
+        {
+            "is_dynamic": true, 
+            "name": "my_product_b", 
+            "group_name": "qti_dynamic_partitions_b"
+        }, 
+        {
+            "is_dynamic": true, 
+            "name": "odm_b", 
+            "group_name": "qti_dynamic_partitions_b"
+        }, 
+        {
+            "is_dynamic": true, 
+            "name": "my_engineering_b", 
+            "group_name": "qti_dynamic_partitions_b"
+        }, 
+        {
+            "is_dynamic": true, 
+            "name": "vendor_dlkm_b", 
+            "group_name": "qti_dynamic_partitions_b"
+        }, 
+        {
+            "is_dynamic": true, 
+            "name": "system_dlkm_b", 
+            "group_name": "qti_dynamic_partitions_b"
+        }, 
+        {
+            "is_dynamic": true, 
+            "name": "my_stock_b", 
+            "group_name": "qti_dynamic_partitions_b"
+        }, 
+        {
+            "is_dynamic": true, 
+            "name": "my_heytap_b", 
+            "group_name": "qti_dynamic_partitions_b"
+        }, 
+        {
+            "is_dynamic": true, 
+            "name": "my_carrier_b", 
+            "group_name": "qti_dynamic_partitions_b"
+        }, 
+        {
+            "is_dynamic": true, 
+            "name": "my_region_b", 
+            "group_name": "qti_dynamic_partitions_b"
+        }, 
+        {
+            "is_dynamic": true, 
+            "name": "my_company_b", 
+            "group_name": "qti_dynamic_partitions_b"
+        }, 
+        {
+            "is_dynamic": true, 
+            "name": "my_preload_b", 
+            "group_name": "qti_dynamic_partitions_b"
+        }, 
+        {
+            "is_dynamic": true, 
+            "name": "my_bigball_b", 
+            "group_name": "qti_dynamic_partitions_b"
+        }, 
+        {
+            "is_dynamic": true, 
+            "name": "my_manifest_b", 
+            "group_name": "qti_dynamic_partitions_b"
+        }
+    ]
+}

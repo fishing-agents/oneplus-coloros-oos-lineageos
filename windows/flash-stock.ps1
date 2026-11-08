@@ -210,17 +210,24 @@ if (-not $superImg) {
   if ($left -ne 0) { Die "$left logical partitions still present after delete" }
 
   # OnePlus Virtual A/B layout (factory super_def.json): <name>_a full size, <name>_b empty (0 bytes).
-  # _a sizes come from super_def when the package has one (right for sparse images too), else from the image.
+  # _a sizes: the package's super_def, else the bundled OP11 layout, grown to the image's raw size if bigger.
   $def = Get-ChildItem $img -Recurse -Filter 'super_def.*.json' | Select-Object -First 1
+  if (-not $def) { $def = Get-Item (Join-Path $Root '..\layout\op11-super_def.json') -ErrorAction SilentlyContinue }
   $defSize = @{}
   if ($def) {
-    Say "sizes from $($def.Name)"
+    Say "sizes from $($def.FullName)"
     (Get-Content $def.FullName -Raw | ConvertFrom-Json).partitions |
-      Where-Object { $_.size } | ForEach-Object { $defSize[$_.name] = $_.size }
+      Where-Object { $_.size } | ForEach-Object { $defSize[$_.name] = [int64]$_.size }
+  }
+  function RawSize($path) {
+    $fs = [IO.File]::OpenRead($path); $br = New-Object IO.BinaryReader($fs)
+    try {
+      if ($br.ReadInt32() -eq 0xED26FF3A) { $fs.Position = 12; return [int64]$br.ReadUInt32() * $br.ReadUInt32() }
+      return $fs.Length
+    } finally { $br.Close() }
   }
   foreach ($p in $logical) {
-    $size = $defSize["${p}_a"]
-    if (-not $size) { $size = (Get-Item $byName[$p]).Length }
+    $size = [Math]::Max([int64]$defSize["${p}_a"], (RawSize $byName[$p]))
     $a = FB create-logical-partition "${p}_a" $size
     $b = FB create-logical-partition "${p}_b" 0
     $f = FB flash "${p}_a" "`"$($byName[$p])`""

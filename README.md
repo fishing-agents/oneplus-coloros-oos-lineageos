@@ -297,7 +297,7 @@ Use this when OxygenOS won't boot after a LineageOS attempt, or when `super` hol
    ```
 5. **Recreate**: `_a` at its `super_def.*.json` size (raw size; a sparse image file is smaller) and flashed; `_b` at 0 bytes, never flashed. Create `_a` at the real size rather than growing an empty partition — host-side auto-grow depends on `is-logical`:
    ```
-   def=$(ls oos/META/super_def.*.json backup/cn-stock/META/super_def.*.json 2>/dev/null | head -1)   # empty: image sizes
+   def=$(ls oos/META/super_def.*.json backup/cn-stock/META/super_def.*.json layout/op11-super_def.json 2>/dev/null | head -1)
    for p in $names; do
      img="oos/$p.img"; [[ -f $img ]] || img="backup/cn-stock/$p.img"; [[ -f $img ]] || { echo "skip $p"; continue; }
      size=$([[ -n $def ]] && jq -r --arg n "${p}_a" '.partitions[] | select(.name == $n) | .size // empty' "$def")

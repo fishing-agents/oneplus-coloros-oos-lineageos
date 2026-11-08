@@ -29,22 +29,35 @@ logical_img() {
 }
 
 # Factory packages ship META/super_def.<nv_id>.json; the nv_id variants differ only in nv_id.
-# SUPER_DEF overrides the lookup.
+# Lookup: SUPER_DEF, the package's own, then the OP11 factory layout bundled in layout/.
 super_def() {
   local f
-  for f in ${SUPER_DEF:-} oos/META/super_def.*.json oos/super_def.*.json backup/cn-stock/META/super_def.*.json; do
+  for f in ${SUPER_DEF:-} oos/META/super_def.*.json oos/super_def.*.json backup/cn-stock/META/super_def.*.json \
+    layout/op11-super_def.json; do
     [[ -f $f ]] && { echo "$f"; return; }
   done
   return 1
 }
 
-# Size for <name>_a: super_def's size (the raw size, right even for sparse images), else the image size.
+# Unpacked size of an image: sparse header blk_sz * total_blks, else the file size.
+image_raw_size() {
+  local magic
+  magic=$(od -An -tx4 -N4 "$1" | tr -d ' ')
+  if [[ $magic == ed26ff3a ]]; then
+    echo $(( $(od -An -tu4 -j12 -N4 "$1") * $(od -An -tu4 -j16 -N4 "$1") ))
+  else
+    stat -c %s "$1"
+  fi
+}
+
+# Size for <name>_a: super_def's size, grown to the image's raw size if a newer build is bigger.
 logical_size() {
-  local def s
+  local def s raw
+  raw=$(image_raw_size "$(logical_img "$1")")
   if def=$(super_def); then
     s=$(jq -r --arg n "${1}_a" '.partitions[] | select(.name == $n) | .size // empty' "$def")
-    [[ -n $s ]] && { echo "$s"; return; }
+    [[ -n $s ]] && (( s >= raw )) && { echo "$s"; return; }
   fi
-  stat -c %s "$(logical_img "$1")"
+  echo "$raw"
 }
 
