@@ -5,7 +5,7 @@
 # session, so every flash is followed by a reboot to the bootloader.
 source "$(dirname "$0")/lib.sh"
 (cd lineage && sha256sum -c --quiet SHA256SUMS) || die "lineage/ incomplete; run scripts/50-lineage-download.sh"
-zip=$(ls lineage/lineage-*-salami-signed.zip)
+zip=$(ls lineage/lineage-*-"$DEVICE"-signed.zip)
 
 adb reboot bootloader 2>/dev/null || true
 fastboot wait-for-device 2>/dev/null || sleep 10

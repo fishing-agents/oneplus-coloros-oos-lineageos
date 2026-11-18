@@ -12,14 +12,14 @@ show_layout() {
   local def max total=0 p img s
   def=$(super_def) && echo "sizes from $def" || { def=; echo "no super_def.json found; sizing _a from image files"; }
   printf '%-20s %14s  %-6s %s\n' partition bytes slot source
-  for p in $LOGICAL; do
+  for p in $(logical_list); do
     img=$(logical_img "$p") || { img="(no image)"; (( DRY )) || die "no image for $p"; }
     s=$(logical_size "$p"); total=$((total + s))
     printf '%-20s %14s  %-6s %s\n' "${p}_a" "$s" a "$img" "${p}_b" 0 b "(empty)"
   done
   printf '%-20s %14s\n' "slot a total" "$total"
   if [[ -n $def ]]; then
-    max=$(jq -r '.groups[] | select(.name == "qti_dynamic_partitions_a") | .maximum_size' "$def")
+    max=$(jq -r '[.groups[] | select(.name | endswith("_a"))][0].maximum_size' "$def")
     printf '%-20s %14s  free %s\n' "group max" "$max" "$((max - total))"
     (( total <= max )) || die "slot a needs $total bytes, group max is $max"
   fi
@@ -31,7 +31,7 @@ if (( DRY )); then
   echo "fastboot snapshot-update cancel"
   echo "fastboot wipe-super lineage/super_empty.img"
   echo "fastboot delete-logical-partition <each partition super_empty.img left>"
-  for p in $LOGICAL; do
+  for p in $(logical_list); do
     echo "fastboot create-logical-partition ${p}_a $(logical_size "$p")"
     echo "fastboot create-logical-partition ${p}_b 0"
     echo "fastboot flash ${p}_a $(logical_img "$p" || echo "<missing>")"
@@ -41,7 +41,7 @@ fi
 
 need_fastbootd
 [[ -f lineage/super_empty.img ]] || die "lineage/super_empty.img missing; run scripts/50-lineage-download.sh"
-for p in $LOGICAL; do logical_img "$p" >/dev/null || die "no image for $p (oos/ or backup/cn-stock/)"; done
+for p in $(logical_list); do logical_img "$p" >/dev/null || die "no image for $p (oos/, backup/cn-stock/ or edl/IMAGES/)"; done
 show_layout
 
 fastboot getvar all 2>&1 | grep -E 'is-logical|has-slot|current-slot|snapshot-update-status' | sort > logs/super-before.txt
@@ -58,7 +58,7 @@ for p in $(fastboot getvar all 2>&1 | sed -n 's/.*is-logical:\([^:]*\):yes.*/\1/
 done
 [[ $(fastboot getvar all 2>&1 | grep -c 'is-logical:.*:yes') == 0 ]] || die "logical partitions left after wipe-super"
 
-for p in $LOGICAL; do
+for p in $(logical_list); do
   img=$(logical_img "$p")
   fastboot create-logical-partition "${p}_a" "$(logical_size "$p")"
   fastboot create-logical-partition "${p}_b" 0

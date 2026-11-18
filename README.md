@@ -1,4 +1,12 @@
-# OnePlus 11 (salami): CN ColorOS → OxygenOS → LineageOS
+# OnePlus / OPPO (Qualcomm, Virtual A/B): CN ColorOS → OxygenOS → LineageOS
+
+Written and tested on a OnePlus 11 (`salami`, CN `PHB110` → `CPH2449`), which is the worked example throughout. The method applies to other OnePlus/OPPO devices with the same layout (Qualcomm, Virtual A/B, `super` with `qti_dynamic_partitions_a/_b`, a LineageOS build).
+
+**Adapting to another device:**
+- Set `DEVICE=<lineage codename>` for the scripts (default `salami`).
+- Get OTAs with `oplus-ota` for your model (`oplus-ota devices` lists them).
+- **Logical partition layout: you need `META/super_def.*.json` from the device's EDL (factory/9008) package**, e.g. `META/super_def.10010111.json` and `META/super_def.00000000.json`. OTA payloads don't contain it. It lists every logical partition, its slot-`a` size and the group size; without it the scripts don't know which partitions to create or how large. The `nv_id` variants differ only in `nv_id`; either works. Copy them to `edl/META/` (or set `SUPER_DEF=<path>`). Logical images missing from the OTA (`my_company`, `my_preload`) come from the same package's `IMAGES/` in `edl/IMAGES/`. The OnePlus 11 layout is bundled as `layout/op11-super_def.json`.
+- Model-specific facts below (`PHB110`/`CPH2449` names, `16.0.5.1301`, partition sizes, the `oplusstanvbk` modem fix, section 4.6, the camera module) are OnePlus 11 results. Recheck each on your device, in particular the per-device partition list and the ARB index.
 
 These are experimental migration notes, not a guaranteed recovery procedure. Stop if a check does not match. A partition backup is evidence, not permission to restore it: replaying per-device secure state can be unsafe even on the same phone. Public EDL (9008) rescue routes require the correct PHB110 package and suitable access/tooling; do not treat them as a safety net.
 
@@ -24,7 +32,7 @@ Host tools: `scripts/00-host-tools.sh` downloads `adb`/`fastboot` (platform-tool
 | `50-lineage-download.sh` | 5.1: newest build + `super_empty.img`, verified against the official API hashes | host |
 | `30-oos-firmware.sh [-n]` | 4.3: conversion set (droidwin list + `init_boot`) from `oos/` (`FW_SRC=backup/cn-stock` for ColorOS), `oplusstanvbk`/`modem` from `backup/device/`; other slotted partitions (`rticmpdata`, `mdtp`, …) are left as they are; keeps LineageOS `recovery`. `-n` prints the plan only | bootloader, or LineageOS-recovery fastbootd |
 | `41-restore-oos.sh [-n] [--keep-recovery]` | 4.3 + 4.5 in one run from the bootloader: LineageOS `recovery` to both slots (skipped with `--keep-recovery`), its fastbootd, `30-oos-firmware.sh`, `40-oos-super.sh`, slot a. One confirmation; `-n` prints both plans only | bootloader |
-| `40-oos-super.sh [-n]` | 4.5: wipe `super`, recreate `<name>_a` (super_def size) + `<name>_b` (0 bytes), flash. `-n` prints the layout and commands only, no device | LineageOS-recovery fastbootd |
+| `40-oos-super.sh [-n]` | 4.5: wipe `super`, recreate every `<name>_a` listed in `super_def` (its size) + `<name>_b` (0 bytes), flash. Needs the EDL package's `super_def.*.json`. `-n` prints the layout and commands only, no device | LineageOS-recovery fastbootd |
 | `45-restore-stanvbk.sh` | put the CN `oplusstanvbk` back (after an OOS OTA or full-firmware flash) | fastbootd |
 | `55-lineage-install.sh` | 5.2–5.7: boot images one per bootloader session, recovery, sideload | bootloader → recovery |
 | `60-checks.sh` | IMEI-related checks: `qsf_init` crash count, `oplusstanvbk` still CN | Android |
@@ -183,6 +191,22 @@ for p in persist modemst1 modemst2 fsg fsc; do [[ -s backup/device/$p.img ]] || 
 
 Two modes are involved: **fastbootd** (userspace, `is-userspace: yes`) is the only mode that can see and write the logical partitions inside `super`; the **bootloader** (`is-userspace: no`, plain "FASTBOOT MODE" screen) is the only one that can write all physical firmware; fastbootd refuses some of it (on PHB110, `modem_a` fails with `Operation not permitted`). So: read the partition layout in fastbootd, flash physical in the bootloader, then go back to fastbootd for logical.
 
+**If fastboot mode is unreliable** (flashes fail after the first one with `partition size: 0`, `Requested download size is more than max allowed` or `No such device`, or the phone drops to a black screen), the small boot-chain images can still be flashed one per bootloader session. Reboot to the bootloader before each image and wait for `OKAY`:
+```
+fastboot flash boot boot.img
+fastboot reboot bootloader
+fastboot flash dtbo dtbo.img
+fastboot reboot bootloader
+fastboot flash init_boot init_boot.img
+fastboot reboot bootloader
+fastboot flash vbmeta vbmeta.img
+fastboot reboot bootloader
+fastboot flash vendor_boot vendor_boot.img
+fastboot reboot bootloader
+fastboot flash recovery recovery.img
+```
+This is enough to get a working recovery and fastbootd back, from which the large images and `super` can be written. If one flash fails, `fastboot reboot bootloader` and rerun only that line. On the OnePlus 11 this was needed in step 5.2; `scripts/55-lineage-install.sh` does the same.
+
 **4.1 fastbootd: read the layout.** The phone is currently booted into Android (from step 3.2), so:
 
 ```
@@ -334,7 +358,7 @@ Use this when OxygenOS won't boot after a LineageOS attempt, or when `super` hol
    ```
 5. **Recreate**: `_a` at its `super_def.*.json` size (raw size; a sparse image file is smaller) and flashed; `_b` at 0 bytes, never flashed. Create `_a` at the real size rather than growing an empty partition, because host-side auto-grow depends on `is-logical`:
    ```
-   def=$(ls oos/META/super_def.*.json backup/cn-stock/META/super_def.*.json layout/op11-super_def.json 2>/dev/null | head -1)
+   def=$(ls edl/META/super_def.*.json oos/META/super_def.*.json backup/cn-stock/META/super_def.*.json layout/op11-super_def.json 2>/dev/null | head -1)
    for p in $names; do
      img="oos/$p.img"; [[ -f $img ]] || img="backup/cn-stock/$p.img"; [[ -f $img ]] || { echo "skip $p"; continue; }
      size=$([[ -n $def ]] && jq -r --arg n "${p}_a" '.partitions[] | select(.name == $n) | .size // empty' "$def")
