@@ -191,21 +191,7 @@ for p in persist modemst1 modemst2 fsg fsc; do [[ -s backup/device/$p.img ]] || 
 
 Two modes are involved: **fastbootd** (userspace, `is-userspace: yes`) is the only mode that can see and write the logical partitions inside `super`; the **bootloader** (`is-userspace: no`, plain "FASTBOOT MODE" screen) is the only one that can write all physical firmware; fastbootd refuses some of it (on PHB110, `modem_a` fails with `Operation not permitted`). So: read the partition layout in fastbootd, flash physical in the bootloader, then go back to fastbootd for logical.
 
-**If fastboot mode is unreliable:** on some phones the bootloader accepts only small flashes right after it starts. The first image or two go through, then later ones fail with `partition size: 0`, `Requested download size is more than max allowed` or `No such device`, or the phone drops to a black screen. `fastboot reboot bootloader` brings it back into the bootloader in a fresh state, so flash one small image per session:
-```
-fastboot flash boot boot.img
-fastboot reboot bootloader
-fastboot flash dtbo dtbo.img
-fastboot reboot bootloader
-fastboot flash init_boot init_boot.img
-fastboot reboot bootloader
-fastboot flash vbmeta vbmeta.img
-fastboot reboot bootloader
-fastboot flash vendor_boot vendor_boot.img
-fastboot reboot bootloader
-fastboot flash recovery recovery.img
-```
-Wait for `OKAY` before each next line. If one flash fails, `fastboot reboot bootloader` and rerun only that line. If it still doesn't work, try flashing just the LineageOS `recovery.img` this way, then write the rest from its fastbootd (Advanced → Enter fastboot). On the OnePlus 11 this happened only after fastboot had been broken by earlier experiments; a normally working bootloader takes all images in one session.
+If bootloader flashes fail with `partition size: 0` or `Requested download size is more than max allowed`, see [Broken fastboot: one flash per reboot](#broken-fastboot-one-flash-per-reboot).
 
 **4.1 fastbootd: read the layout.** The phone is currently booted into Android (from step 3.2), so:
 
@@ -409,7 +395,7 @@ After the reboot the user reported the repeats stopped; the post-reboot log was 
 Requires OOS to already be on Android 16 latest patch (done in step 4). Follow https://wiki.lineageos.org/devices/salami/install/ if anything here is unclear.
 
 1. Download from https://download.lineageos.org/devices/salami: `boot.img`, `dtbo.img`, `init_boot.img`, `vbmeta.img`, `vendor_boot.img`, `recovery.img`, `super_empty.img`, `lineage-*-salami-signed.zip`, optionally a GApps arm64 zip. Before step 2, while still on OOS: place a call, send an SMS and use mobile data once (this provisions IMS, per wiki prerequisite 5), then remove all Google accounts.
-2. `adb reboot bootloader`, then flash the boot images. Wait for `OKAY` before each next line. If flashes start failing with `partition size: 0` or `Requested download size is more than max allowed`, fastboot is in a broken state; use the one-image-per-session method from the start of section 4 (`scripts/55-lineage-install.sh` always flashes that way; slower, but it also works on a healthy bootloader).
+2. `adb reboot bootloader`, then flash the boot images. Wait for `OKAY` before each next line. If flashes start failing with `partition size: 0` or `Requested download size is more than max allowed`, fastboot is in a broken state; use [one flash per reboot](#broken-fastboot-one-flash-per-reboot) (`scripts/55-lineage-install.sh` always flashes that way; slower, but it also works on a healthy bootloader).
    ```
    fastboot flash boot boot.img
    fastboot flash dtbo dtbo.img
@@ -533,6 +519,26 @@ On Windows, v2's documented flow is: select the matching programmer/digest/signa
 
 After a successful, reviewed stock-software flash, leave the bootloader **unlocked**. Boot ColorOS 13, perform its required userdata format if necessary, verify model/build, `super` layout, IMEIs, calls, data, Wi-Fi, fingerprint and camera. Then use the stock updater with signed **PHB110 CN** full/incremental OTAs accepted by the currently installed build, checking the next package's preconditions at each step. A [full OTA may bridge builds but an incremental OTA needs its exact source build](https://source.android.com/docs/core/ota/tools); online update availability is not guaranteed. Stop at the first rejected update rather than force an incompatible one. Reaching stock ColorOS 16 does not prove that default KeyMint attestation `-49` is fixed, and neither EDL nor OTA restores factory secure state.
 
+## Broken fastboot: one flash per reboot
+
+A workaround for a bootloader whose fastboot is in a broken state (on the OnePlus 11 this happened after earlier flashing experiments; a working bootloader takes all images in one session). Symptom: right after the bootloader starts, small flashes go through, then later ones fail with `partition size: 0`, `Requested download size is more than max allowed` or `No such device`, or the phone drops to a black screen. `fastboot reboot bootloader` returns it to a fresh state, so flash one small image per session:
+```
+fastboot flash boot boot.img
+fastboot reboot bootloader
+fastboot flash dtbo dtbo.img
+fastboot reboot bootloader
+fastboot flash init_boot init_boot.img
+fastboot reboot bootloader
+fastboot flash vbmeta vbmeta.img
+fastboot reboot bootloader
+fastboot flash vendor_boot vendor_boot.img
+fastboot reboot bootloader
+fastboot flash recovery recovery.img
+```
+Use the images of what you're installing (LineageOS, or the stock OTA's). Wait for `OKAY` before each next line. If one flash fails, `fastboot reboot bootloader` and rerun only that line. If it still doesn't work, try flashing just the LineageOS `recovery.img` this way, then write the rest from its fastbootd (Advanced → Enter fastboot). `scripts/55-lineage-install.sh` always flashes this way.
+
+---
+
 ## Why these specific risks matter
 
 | Risk | Where it's handled |
@@ -544,5 +550,6 @@ After a successful, reviewed stock-software flash, leave the bootloader **unlock
 | Modem crash loop / no IMEI on OOS | OOS `oplusstanvbk` doesn't match CN `ocdt`. Restore CN `oplusstanvbk_a`/`_b` from `backup/device/` (4.3), and keep OOS OTAs off |
 | IMEI/EFS or attestation failure | Stop and collect read-only evidence. **Never restore any image from `backup/device/` except the documented CN `oplusstanvbk_a/_b` modem fix. Never restore protected per-device/security-state images or reset RPMB.** Retain private backups for authorized-service assessment; there is no verified local identity-reset procedure for this phone. |
 | VoLTE/VoWiFi never provisioned | Checked on CN stock in step 2.1, re-checked on OOS in step 4 |
+| Bootloader flashes fail after the first few (`partition size: 0`) | [Broken fastboot: one flash per reboot](#broken-fastboot-one-flash-per-reboot) |
 | Relocking the bootloader | Never do it |
 | FRP lock after LineageOS install | Google account removed from OOS in step 4 |
