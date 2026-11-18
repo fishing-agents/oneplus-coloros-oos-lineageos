@@ -91,4 +91,4 @@ Model/name/device (`PHB110`/`PHB110`/`OP591BL1` vs `CPH2449`/`CPH2449EEA`/`OP594
 
 - `persist.*`: `setprop persist.<key> <value>` then reboot. The value is stored in `/data/property/persistent_properties`.
 - `ro.*`: read-only after property initialization. `setprop` cannot change them at runtime; a boot-time `resetprop` (KernelSU/Magisk-style) or an image edit/flash is required. Prefer no image edits.
-- After any change, verify with `getprop` and re-check behavior; note that some keys exist in multiple partitions and effective precedence depends on load order.
+- After any change, verify with `getprop` and re-check behavior. Some keys exist in multiple partitions and effective precedence depends on load order.
