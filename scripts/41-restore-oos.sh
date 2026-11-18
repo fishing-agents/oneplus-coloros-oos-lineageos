@@ -4,19 +4,18 @@
 #      skipped with --keep-recovery when LineageOS recovery is already on the phone
 #   2. reboot to that recovery's fastbootd
 #   3. 30-oos-firmware.sh: firmware (conversion set from $FW_SRC, rest from backup/device)
-#   4. 40-oos-super.sh: wipe super, recreate the factory layout, flash logical _a
+#   4. 40-oos-super.sh: flash logical _a in place; with --rebuild, wipe super and recreate the factory layout first
 # LineageOS recovery stays installed throughout; OxygenOS boots with it (the OTA updater replaces it later).
-# usage: scripts/41-restore-oos.sh [-n|--dry-run] [--keep-recovery]
+# usage: scripts/41-restore-oos.sh [-n|--dry-run] [--keep-recovery] [--rebuild]
 source "$(dirname "$0")/lib.sh"
-DRY=0 KEEP=0
+DRY=0 KEEP=0 SUPER=()
 for a in "$@"; do
-  case $a in -n|--dry-run) DRY=1 ;; --keep-recovery) KEEP=1 ;; *) die "unknown option $a" ;; esac
+  case $a in -n|--dry-run) DRY=1 ;; --keep-recovery) KEEP=1 ;; --rebuild) SUPER=(--rebuild) ;; *) die "unknown option $a" ;; esac
 done
 (( KEEP )) || [[ -f lineage/recovery.img ]] || die "lineage/recovery.img missing; run scripts/50-lineage-download.sh"
-[[ -f lineage/super_empty.img ]] || die "lineage/super_empty.img missing; run scripts/50-lineage-download.sh"
 
 step "plan: firmware"; scripts/30-oos-firmware.sh -n
-step "plan: super";    scripts/40-oos-super.sh -n
+step "plan: super";    scripts/40-oos-super.sh -n "${SUPER[@]}"
 if (( DRY )); then
   echo
   (( KEEP )) || echo "bootloader: fastboot flash --slot=all recovery lineage/recovery.img"
@@ -35,7 +34,7 @@ if ! in_fastbootd; then
 fi
 
 YES=1 scripts/30-oos-firmware.sh
-YES=1 scripts/40-oos-super.sh
+YES=1 scripts/40-oos-super.sh "${SUPER[@]}"
 fastboot --set-active=a
 cat <<'EOF'
 done. Now:

@@ -31,8 +31,8 @@ Host tools: `scripts/00-host-tools.sh` downloads `adb`/`fastboot` (platform-tool
 | `20-extract.sh <cn.zip> <oos.zip>` | 3.1 + 3.4: extract both OTAs; refuses OOS older than CN or than 16.0.5.1301 | host |
 | `50-lineage-download.sh` | 5.1: newest build + `super_empty.img`, verified against the official API hashes | host |
 | `30-oos-firmware.sh [-n]` | 4.3: conversion set (droidwin list + `init_boot`) from `oos/` (`FW_SRC=backup/cn-stock` for ColorOS), `oplusstanvbk`/`modem` from `backup/device/`; other slotted partitions (`rticmpdata`, `mdtp`, …) are left as they are; keeps LineageOS `recovery`. `-n` prints the plan only | bootloader, or LineageOS-recovery fastbootd |
-| `41-restore-oos.sh [-n] [--keep-recovery]` | 4.3 + 4.5 in one run from the bootloader: LineageOS `recovery` to both slots (skipped with `--keep-recovery`), its fastbootd, `30-oos-firmware.sh`, `40-oos-super.sh`, slot a. One confirmation; `-n` prints both plans only | bootloader |
-| `40-oos-super.sh [-n]` | 4.5: wipe `super`, recreate every `<name>_a` listed in `super_def` (its size) + `<name>_b` (0 bytes), flash. Needs the EDL package's `super_def.*.json`. `-n` prints the layout and commands only, no device | LineageOS-recovery fastbootd |
+| `41-restore-oos.sh [-n] [--keep-recovery] [--rebuild]` | 4.3 + 4.5 in one run from the bootloader: LineageOS `recovery` to both slots (skipped with `--keep-recovery`), its fastbootd, `30-oos-firmware.sh`, `40-oos-super.sh` (`--rebuild` passed through), slot a. One confirmation; `-n` prints both plans only | bootloader |
+| `40-oos-super.sh [-n] [--rebuild]` | 4.5: flash every `<name>_a` listed in `super_def` in place; stops if one is missing. Nothing is wiped by default. `--rebuild` (recovery step, destructive): wipe `super`, recreate `<name>_a` (its size) + `<name>_b` (0 bytes), then flash. Needs the EDL package's `super_def.*.json`. `-n` prints the layout and commands only, no device | LineageOS-recovery fastbootd |
 | `45-restore-stanvbk.sh` | put the CN `oplusstanvbk` back (after an OOS OTA or full-firmware flash) | fastbootd |
 | `55-lineage-install.sh` | 5.2–5.7: boot images one per bootloader session, recovery, sideload | bootloader → recovery |
 | `60-checks.sh` | IMEI-related checks: `qsf_init` crash count, `oplusstanvbk` still CN | Android |
@@ -41,7 +41,7 @@ Host tools: `scripts/00-host-tools.sh` downloads `adb`/`fastboot` (platform-tool
 | `85-driver-check.sh` | GPU/display driver and vendor HAL health (section 7) | LineageOS; root for dmesg |
 | `90-oplus-camera-module.sh` | Experimental OnePlus camera KernelSU ZIP built from `oos/` (section 7) | host |
 
-**Path that worked on a PHB110:** `10` → `20` → `50` → bootloader: `fastboot flash recovery lineage/recovery.img`, boot Recovery → Advanced → Enter fastboot → `30` → `40` → recovery: Format data → bootloader: `fastboot --set-active=a` → `45` → OxygenOS boots with IMEI → `55` → LineageOS 24.0 works. The earlier failed attempt (sideload straight after `wipe-super`, then "drops to bootloader") was never root-caused.
+**Path that worked on a PHB110:** `10` → `20` → `50` → bootloader: `fastboot flash recovery lineage/recovery.img`, boot Recovery → Advanced → Enter fastboot → `30` → `40 --rebuild` (layout was broken) → recovery: Format data → bootloader: `fastboot --set-active=a` → `45` → OxygenOS boots with IMEI → `55` → LineageOS 24.0 works. The earlier failed attempt (sideload straight after `wipe-super`, then "drops to bootloader") was never root-caused.
 
 ---
 
@@ -310,6 +310,8 @@ If a logical flash fails with "not enough space": `fastboot delete-logical-parti
 ### 4.5 Recovery: reset `super` and reinstall OxygenOS logical partitions
 
 Use this when OxygenOS won't boot after a LineageOS attempt, or when `super` holds a broken layout. The `backup/device/` dump can't supply the layout: it excludes `super`, where all logical partitions live. Firmware and boot images must already be complete (4.3 log: ~63 `Writing … OKAY`, only `modem_a` refused).
+
+`scripts/40-oos-super.sh` without options only flashes the existing `<name>_a` partitions and stops if any is missing; it never wipes. The wipe and recreate below is `scripts/40-oos-super.sh --rebuild` (or `41-restore-oos.sh --rebuild`). Run it only when the layout is broken (unslotted names, `-cow` leftovers, missing partitions, "not enough space").
 
 **Correct layout on PHB110 / OOS 16** (from `fastboot getvar all` in fastbootd, and matching the OnePlus fastboot flasher `koaaN/Universal_Flasher`):
 - Every logical partition is **slotted**: `<name>_a` / `<name>_b` (`has-slot:system:yes`, `is-logical:system_a:yes`). Snapshot leftovers are `<name>_a-cow` / `<name>_b-cow`. Never create unslotted names; first-stage init looks for `<name>_<slot>`.
