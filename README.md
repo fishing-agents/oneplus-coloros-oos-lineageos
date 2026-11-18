@@ -71,11 +71,14 @@ Host tools: `scripts/00-host-tools.sh` downloads `adb`/`fastboot` (platform-tool
 4. Developer options → enable **OEM unlocking** and **USB debugging**.
    - If OEM unlocking stays greyed out: some CN builds gate it behind an "in-depth test" app or require the phone to be online. Resolve that before continuing; nothing downstream works without this.
 5. Plug in USB. `adb devices -l`, accept the RSA prompt on the phone, then confirm the serial shows up.
-6. Now that adb works, back up anything you care about off the phone: `adb pull /sdcard/DCIM ./userbackup/`, etc. Unlocking wipes `userdata` next.
+6. **Back up before unlocking: `fastboot flashing unlock` wipes `userdata`** (apps, app data, photos, everything on internal storage). Nothing can be recovered afterwards.
+   - Pull internal storage over adb: `adb pull /sdcard/ ./userbackup/` (or at least `DCIM`, `Pictures`, `Download`, `Documents`, and messenger media folders under `Android/media`).
+   - adb can't read app data without root. Use each app's own export or cloud backup (chats, 2FA/authenticator apps, notes) and ColorOS Settings → Backup & restore. Move 2FA to another device first.
+   - Check the copy on the host (`du -sh userbackup/`) before going on.
 7. `adb -d reboot bootloader`
 8. `fastboot devices` must print the serial.
 9. `fastboot getvar all > logs/getvar-before.txt 2>&1`
-10. `fastboot flashing unlock`, then confirm on screen with volume/power.
+10. `fastboot flashing unlock`, then confirm on screen with volume/power. This wipes `userdata` (step 6).
 
 **Check:** `fastboot getvar unlocked` → `unlocked: yes`. Orange unlock warning on boot. After the wipe-reboot, redo steps 3–4 (Developer options and USB debugging get reset).
 
