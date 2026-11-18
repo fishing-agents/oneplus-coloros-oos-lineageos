@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Task 5 steps 2-5: flash LineageOS boot images + recovery, then sideload.
 # Precondition: OxygenOS (>= 16.0.5.1301, the firmware LineageOS bundles) boots with IMEI, Google accounts removed,
-# super in the _a/_b layout (scripts/40-oos-super.sh). The bootloader on this phone only takes one flash per
-# session, so every flash is followed by a reboot to the bootloader.
+# super in the _a/_b layout (scripts/40-oos-super.sh). Flashes one image per bootloader session, which also
+# works when fastboot is in a broken state (README, section 4).
 source "$(dirname "$0")/lib.sh"
 (cd lineage && sha256sum -c --quiet SHA256SUMS) || die "lineage/ incomplete; run scripts/50-lineage-download.sh"
 zip=$(ls lineage/lineage-*-"$DEVICE"-signed.zip)

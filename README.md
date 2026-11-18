@@ -205,7 +205,7 @@ fastboot flash vendor_boot vendor_boot.img
 fastboot reboot bootloader
 fastboot flash recovery recovery.img
 ```
-Wait for `OKAY` before each next line. If one flash fails, `fastboot reboot bootloader` and rerun only that line. If it still doesn't work, try flashing just the LineageOS `recovery.img` this way, then write the rest from its fastbootd (Advanced → Enter fastboot). On the OnePlus 11 this was needed in step 5.2; `scripts/55-lineage-install.sh` does the same.
+Wait for `OKAY` before each next line. If one flash fails, `fastboot reboot bootloader` and rerun only that line. If it still doesn't work, try flashing just the LineageOS `recovery.img` this way, then write the rest from its fastbootd (Advanced → Enter fastboot). On the OnePlus 11 this happened only after fastboot had been broken by earlier experiments; a normally working bootloader takes all images in one session.
 
 **4.1 fastbootd: read the layout.** The phone is currently booted into Android (from step 3.2), so:
 
@@ -409,18 +409,13 @@ After the reboot the user reported the repeats stopped; the post-reboot log was 
 Requires OOS to already be on Android 16 latest patch (done in step 4). Follow https://wiki.lineageos.org/devices/salami/install/ if anything here is unclear.
 
 1. Download from https://download.lineageos.org/devices/salami: `boot.img`, `dtbo.img`, `init_boot.img`, `vbmeta.img`, `vendor_boot.img`, `recovery.img`, `super_empty.img`, `lineage-*-salami-signed.zip`, optionally a GApps arm64 zip. Before step 2, while still on OOS: place a call, send an SMS and use mobile data once (this provisions IMS, per wiki prerequisite 5), then remove all Google accounts.
-2. `adb reboot bootloader`, then flash one image per bootloader session: during this step a flash only worked as the first command after a reboot to the bootloader. Later ones failed with `partition size: 0`, `Requested download size is more than max allowed` or `No such device`, and the phone crashed to a black screen (below). Wait for `OKAY` before each next line; if one fails, `fastboot reboot bootloader` and rerun just that flash.
+2. `adb reboot bootloader`, then flash the boot images. Wait for `OKAY` before each next line. If flashes start failing with `partition size: 0` or `Requested download size is more than max allowed`, fastboot is in a broken state; use the one-image-per-session method from the start of section 4 (`scripts/55-lineage-install.sh` always flashes that way; slower, but it also works on a healthy bootloader).
    ```
    fastboot flash boot boot.img
-   fastboot reboot bootloader
    fastboot flash dtbo dtbo.img
-   fastboot reboot bootloader
    fastboot flash init_boot init_boot.img
-   fastboot reboot bootloader
    fastboot flash vbmeta vbmeta.img
-   fastboot reboot bootloader
    fastboot flash vendor_boot vendor_boot.img
-   fastboot reboot bootloader
    fastboot flash recovery recovery.img
    ```
    **Black screen, nothing responds:** check `dmesg` on the host. `idVendor=05c6, idProduct=900e` (`QUSB_BULK_CID:…`, Qualcomm CDMA Technologies MSM) is Qualcomm crash-dump mode: the phone hit a fatal error and is waiting for a host to collect a RAM dump. Not a brick. Unplug USB, hold Power + Volume Down ~15 s until it restarts into the bootloader, then rerun the flash that failed. If it shows `05c6:9008` (EDL) instead, or keeps returning to `900e`, stop: that's the EDL last resort from the top of this guide.
