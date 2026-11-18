@@ -484,6 +484,16 @@ APatch (patches `boot`, never `init_boot`; runs Magisk-format modules). Install:
 
 ---
 
+## Anti-rollback: Android ARB and EDL are separate
+
+**Android boot-chain ARB.** Qualcomm fuses store a rollback index; flashing firmware with a lower index than the fuse hard-bricks the boot chain. [OnePlus-antirollchecker](https://github.com/Bartixxx32/OnePlus-antirollchecker) ([website](https://oparb.pages.dev/), Telegram [@oparbcheckerbot](https://t.me/oparbcheckerbot)) tracks the ARB index of every OnePlus OTA. For the OnePlus 11, 16.0.5.1301 (CPH2449 EU/GLO, CPH2447, CPH2451) is listed at **ARB index 0**, OEM version Major 2. Check the target build there before flashing any firmware. A `?` / "Undetectable ARB" result means unknown, not safe.
+
+**EDL is a second, independent lock.** ARB index 0 only means Android firmware can be downgraded. Recovery through EDL (9008) needs a Qualcomm firehose programmer that the phone's primary bootloader accepts, and on OnePlus that also needs a signed authorization ("custom signing request") for the device. Community EDL tools depend on a weakness in that signing check. When OnePlus fixes it by shipping new keys in a firmware update, as happened in a recent update, the old firehose and signing method stop working on phones that installed it. EDL is then unusable even though Android ARB is still 0, and only an authorized OnePlus service center can flash the phone over EDL.
+
+So before updating firmware, check both: the ARB index on OnePlus-antirollchecker, and whether the update changes the EDL keys (check the [OP11 EDL thread](https://xdaforums.com/t/op11-edl-downloadtool-to-restore-your-device-to-oxygenos-coloros.4607995/) and OnePlus-antirollchecker's community). If EDL is your fallback, don't install firmware that breaks it. Section 8 assumes EDL still works on this phone.
+
+---
+
 ## 8. Optional return to PHB110 ColorOS with OplusEdlTool v2
 
 **Not yet cleared to flash.** This is a conditional recovery path, not an attestation repair. If the bootloader and fastbootd work, a reviewed full PHB110 ColorOS 16 package avoids the Android 13 downgrade; do not run the OOS-specific scripts in section 4 unchanged against the CN package. The [open-source OplusEdlTool v2](https://github.com/salokrwhite/OplusEdlTool) supports selected partitions and assembling `super`. The [newer v3/v4 downloads](https://static-tcdn.anteasy.com/xasdun/upload-log/oet-upload.html) are not described by v2's source. Do not assume their selection or patch behavior matches.
