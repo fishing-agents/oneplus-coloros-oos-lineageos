@@ -323,6 +323,25 @@ Use this when OxygenOS won't boot after a LineageOS attempt, or when `super` hol
 3. **Data formatted in LineageOS recovery** (Factory Reset → Format data). `fastboot -w` in fastbootd only erases `userdata`/`metadata` (`not automatically formatting`).
 4. `fastboot --set-active=a` from the bootloader (resets slot `a`'s retry/unbootable flags), then reboot.
 
+### 4.6 — CN PHB110 on OxygenOS: iris/Apollo display retry flood
+
+On this tested PHB110 (CN hardware, `AMB670YF07_CS` Samsung panel) running the EU (CPH2449) OxygenOS build, `logcat` flooded every frame with:
+
+```
+I/ApolloService: Failed to commit, try again.
+```
+
+The kernel side showed `is_support_apollo_bk: iris secondary panel no need config!`. Cause: the EU build defaults `persist.vendor.display.pxlw.iris_feature` to `0x400080` (`odm/build.prop` and `my_product/build.prop`), while the CN build uses `0x407f0780` (`my_product/build.prop`). With the EU mask, SDM's `ApolloService` kept retrying an AP-side backlight sync that this unit's iris panel does not take. This is not yet verified on other CN units or panels.
+
+Workaround (persistent property, then reboot):
+
+```
+adb shell su -c 'setprop persist.vendor.display.pxlw.iris_feature 0x407f0780'
+adb reboot
+```
+
+After the reboot the user reported the repeats stopped; the post-reboot log was not captured in that session. Re-check with `adb shell getprop persist.vendor.display.pxlw.iris_feature` (`0x407f0780`) and `adb logcat -d -s ApolloService` while the screen is on. The value is stored in `/data/property/persistent_properties`. A factory reset or userdata wipe removes it; reapply afterwards. Revert with `0x400080` and a reboot. Full evidence and the related CN-vs-EU property audit are in `op11-display-debug.md` and [op11-region-swap-props.md](op11-region-swap-props.md).
+
 ---
 
 ## 5. Install LineageOS 24.0
