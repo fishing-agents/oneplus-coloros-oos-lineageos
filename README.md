@@ -40,10 +40,15 @@ Host tools: `scripts/00-host-tools.sh` downloads `adb`/`fastboot` (platform-tool
 ## 1. Get the firmware files
 
 1. Settings → About device → note the exact model (should be `PHB110`) and the current ColorOS build number.
-2. Download the **full** (not incremental) CN ColorOS OTA matching that exact build. Check https://yun.daxiaamu.com/OnePlus_Roms/ (OnePlus 11 folder) first — it's known to list PHB110 ColorOS 16 packages directly, e.g. `16.0.1.300(CN01)` and `16.0.5.701(CN01)`. If it's moved or missing your build, also try: the XDA thread [ROM][OTA] Repository of OxygenOS & ColorOS FULL OTA's [OxygenOS 15 & 16][ColorOS 15 & 16] (https://xdaforums.com/t/rom-ota-repository-of-oxygenos-coloros-full-otas-oxygenos-15-16-coloros-15-16.4718692/), `https://github.com/chlink2025/oplusrom`, `https://github.com/JerryTse-OSS/OPlus-Tracker`, or search the exact build string directly. Match the build number **exactly** against Settings → About — a close-but-different ColorOS 16 sub-build is not safe to treat as this phone's own backup/restore source.
+2. Download the **full** CN ColorOS OTA with [oplus-ota](https://github.com/fishing-agents/oplus-ota) (`uv tool install oplus-ota`; needs `aria2c`). It queries OPPO's servers directly and checks the MD5:
+   ```
+   oplus-ota query op11 -r cn                 # compare Version with Settings → About
+   oplus-ota download op11 -r cn -o ~/ota
+   ```
+   It only returns the **latest** build. If the phone is on an older one, update it first or use a mirror: [yun.daxiaamu.com](https://yun.daxiaamu.com/OnePlus_Roms/) (OnePlus 11 folder), the [XDA full-OTA repository](https://xdaforums.com/t/rom-ota-repository-of-oxygenos-coloros-full-otas-oxygenos-15-16-coloros-15-16.4718692/), [chlink2025/oplusrom](https://github.com/chlink2025/oplusrom) or [OPlus-Tracker](https://github.com/JerryTse-OSS/OPlus-Tracker). Match the build number **exactly** against Settings → About — a close-but-different ColorOS 16 sub-build is not safe to treat as this phone's own backup/restore source.
    - **Exception, needed either way:** step 3.2 needs *some* `init_boot.img` to Magisk-patch for root, with no other safe source on this device. On a GKI device `init_boot` is just the generic ramdisk, essentially identical across ColorOS 16 sub-builds — so a near-match PHB110 ColorOS 16 package (even not your exact build) is an acceptable **`init_boot.img` patch source only**: it's flashed to the current slot temporarily and gets overwritten again in step 4 anyway. It is **not** an acceptable source for the rest of `backup/cn-stock/` (restore/compare purposes) if it's not your exact build — see the `super.img` requirement in step 3.3.
-3. Download a **full** CPH2449 (EU or GLO) OxygenOS OTA on **Android 16**, latest security patch — same sources. If `spike0en/oneplus_archive` has no `salami`/CPH2449 listing (it currently only lists newer devices, OnePlus 12 and up), use https://github.com/oxygen-updater/oxygen-updater/releases/latest (the Oxygen Updater app/tool) instead.
-4. Verify each zip's SHA256 against the source's published hash.
+3. Download the **full** CPH2449 OxygenOS OTA (latest Android 16): `oplus-ota download op11 -r eu -o ~/ota` (or `-r glo`). The mirrors above are the fallback.
+4. oplus-ota verifies the server's MD5. For mirror downloads, verify the hash the source publishes.
 5. `mkdir -p backup/cn-stock backup/device oos logs`
 
 **Check:** both full OTA zips downloaded, hashes verified, four directories exist.
