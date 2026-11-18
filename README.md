@@ -6,7 +6,7 @@ Written and tested on a OnePlus 11 (`salami`, CN `PHB110` → `CPH2449`), which 
 - Set `DEVICE=<lineage codename>` for the scripts (default `salami`).
 - Get OTAs with `oplus-ota` for your model (`oplus-ota devices` lists them).
 - **Logical partition layout: you need `META/super_def.*.json` from the device's EDL (factory/9008) package**, e.g. `META/super_def.10010111.json` and `META/super_def.00000000.json`. OTA payloads don't contain it. It lists every logical partition, its slot-`a` size and the group size; without it the scripts don't know which partitions to create or how large. The `nv_id` variants differ only in `nv_id`; either works. Copy them to `edl/META/` (or set `SUPER_DEF=<path>`). Logical images missing from the OTA (`my_company`, `my_preload`) come from the same package's `IMAGES/` in `edl/IMAGES/`. The OnePlus 11 layout is bundled as `layout/op11-super_def.json`.
-- Model-specific facts below (`PHB110`/`CPH2449` names, `16.0.5.1301`, partition sizes, the `oplusstanvbk` modem fix, section 4.6, the camera module) are OnePlus 11 results. Recheck each on your device, in particular the per-device partition list and the ARB index.
+- Model-specific facts below (`PHB110`/`CPH2449` names, `16.0.5.1301`, partition sizes, section 4.6, the camera module) are OnePlus 11 results. Recheck each on your device, in particular the per-device partition list and the ARB index.
 
 These are experimental migration notes, not a guaranteed recovery procedure. Stop if a check does not match. A partition backup is evidence, not permission to restore it: replaying per-device secure state can be unsafe even on the same phone. Public EDL (9008) rescue routes require the correct PHB110 package and suitable access/tooling; do not treat them as a safety net.
 
@@ -191,7 +191,7 @@ for p in persist modemst1 modemst2 fsg fsc; do [[ -s backup/device/$p.img ]] || 
 
 Two modes are involved: **fastbootd** (userspace, `is-userspace: yes`) is the only mode that can see and write the logical partitions inside `super`; the **bootloader** (`is-userspace: no`, plain "FASTBOOT MODE" screen) is the only one that can write all physical firmware; fastbootd refuses some of it (on PHB110, `modem_a` fails with `Operation not permitted`). So: read the partition layout in fastbootd, flash physical in the bootloader, then go back to fastbootd for logical.
 
-**If fastboot mode is unreliable** (flashes fail after the first one with `partition size: 0`, `Requested download size is more than max allowed` or `No such device`, or the phone drops to a black screen), the small boot-chain images can still be flashed one per bootloader session. Reboot to the bootloader before each image and wait for `OKAY`:
+**If fastboot mode is unreliable:** on some phones the bootloader accepts only small flashes right after it starts. The first image or two go through, then later ones fail with `partition size: 0`, `Requested download size is more than max allowed` or `No such device`, or the phone drops to a black screen. `fastboot reboot bootloader` brings it back into the bootloader in a fresh state, so flash one small image per session:
 ```
 fastboot flash boot boot.img
 fastboot reboot bootloader
@@ -205,7 +205,7 @@ fastboot flash vendor_boot vendor_boot.img
 fastboot reboot bootloader
 fastboot flash recovery recovery.img
 ```
-This is enough to get a working recovery and fastbootd back, from which the large images and `super` can be written. If one flash fails, `fastboot reboot bootloader` and rerun only that line. On the OnePlus 11 this was needed in step 5.2; `scripts/55-lineage-install.sh` does the same.
+Wait for `OKAY` before each next line. If one flash fails, `fastboot reboot bootloader` and rerun only that line. If it still doesn't work, try flashing just the LineageOS `recovery.img` this way, then write the rest from its fastbootd (Advanced → Enter fastboot). On the OnePlus 11 this was needed in step 5.2; `scripts/55-lineage-install.sh` does the same.
 
 **4.1 fastbootd: read the layout.** The phone is currently booted into Android (from step 3.2), so:
 
@@ -232,7 +232,7 @@ If the count is lower than the number of names (the current slot is missing logi
 
 Flash rule, derived from this phone's own partition list (`logs/partitions.txt` from step 3.3) instead of a hand-kept skip list:
 - **Logical** (in `$logical`) → current slot, in fastbootd (4.4).
-- **Slotted physical** (the phone has `<name>_a`) → only eligible firmware from a compatible package may be flashed to both slots. A slot suffix does **not** override the protected-state list: never flash `qweslicstore_a/_b`. **Exception: `oplusstanvbk`** stays CN on PHB110 and has only the narrow documented modem repair. Its CN copy must match the unslotted CN `ocdt`; the OOS copy caused the recorded modem crash loop.
+- **Slotted physical** (the phone has `<name>_a`) → only eligible firmware from a compatible package may be flashed to both slots. A slot suffix does **not** override the protected-state list: never flash `qweslicstore_a/_b`. **Exception: `oplusstanvbk`** stays CN on any converted CN phone and has only the narrow documented modem repair. Its CN copy must match the unslotted CN `ocdt`; the OOS copy caused the recorded modem crash loop.
 - **Unslotted** (no `_a`/`_b` on the phone) → **NEVER flash, restore, erase, or format per-device state**. On this phone these include EFS/IMEI (`persist`, `modemst1`, `modemst2`, `fsg`, `fsc`), NV backups (`oplusdycnvbk`, `oplusreserve1`–`5`, `mdm1oemnvbktmp`), board/calibration (`cdt`, `ocdt`, `ddr`, `dinfo`, `param`), security/keys (`devinfo`, `secdata`, `storsec`, `keystore`, `spunvm`, `qmcs`, `tzsc`, `uefivarstore`, `frp`, `apdp*`, `ssd`), and VM state (`vm-persist`, `vm-data`). Quarantine their backups under `backup/per-device-DO-NOT-RESTORE/`; if a payload contains them, leave the phone's copies untouched. RPMB must not be reset or reprovisioned as an experiment either.
 
 **4.2 Dry run.** Prints the exact commands, touches nothing:
@@ -275,9 +275,9 @@ Continue only on `all physical flashes OK`. Don't reboot to Android if anything 
 
 **Known on PHB110:** `modem` is refused by both the bootloader and stock (OOS) fastbootd (`Writing 'modem_a' FAILED (remote: 'Operation not permitted')`), and `--slot=all` stops there so `modem_b` isn't attempted; every other physical partition writes fine. The phone keeps its CN modem, which works on OOS once `oplusstanvbk` is CN (below). Continue to 4.4.
 
-**PHB110 modem crash loop: cause and fix (confirmed on a PHB110).**
+**CN → OxygenOS modem crash loop: cause and fix (any ColorOS → OxygenOS conversion; confirmed on a PHB110).**
 - **Symptom:** OOS boots, but dmesg repeats every ~5 s `fatal error received: rflm_diag_error.cc:373:RFLM@sdmqlnkseq.cpp:1691 … Qlink(0) qsf_init failed at first bootup`. No IMEI, no signal.
-- **Cause:** the OOS `oplusstanvbk` (OnePlus static NV backup) doesn't match the CN `ocdt`. `oplusstanvbk` has `_a`/`_b` slots and ships in the OOS payload, so a plain 4.3 flash replaces it. `ocdt` has no slots and is never flashed. The modem reads `oplusstanvbk` through remote storage while it starts ([linux-msm/rmtfs#33](https://github.com/linux-msm/rmtfs/pull/33)). OnePlus 11 converters found that `oplusstanvbk` and `ocdt` must come from the same variant ([XDA 4583321](https://xdaforums.com/t/maybe-a-proper-way-to-fix-issues-after-converting-color-to-oxygen.4583321/), read via `r.jina.ai` because XDA returns 403). The same fix is used for CN OnePlus 13/13T ([K58/fix-signal-oneplus13](https://github.com/K58/fix-signal-oneplus13)).
+- **Cause:** this is a general ColorOS → OxygenOS conversion issue, not specific to the OnePlus 11. The OOS `oplusstanvbk` (OnePlus static NV backup) doesn't match the CN `ocdt`. `oplusstanvbk` has `_a`/`_b` slots and ships in the OOS payload, so a plain 4.3 flash replaces it. `ocdt` has no slots and is never flashed. The modem reads `oplusstanvbk` through remote storage while it starts ([linux-msm/rmtfs#33](https://github.com/linux-msm/rmtfs/pull/33)). Converters found that `oplusstanvbk` and `ocdt` must come from the same variant ([XDA 4583321](https://xdaforums.com/t/maybe-a-proper-way-to-fix-issues-after-converting-color-to-oxygen.4583321/), read via `r.jina.ai` because XDA returns 403). The same fix is used for CN OnePlus 13/13T ([K58/fix-signal-oneplus13](https://github.com/K58/fix-signal-oneplus13)).
 - **Fix:** keep the CN `oplusstanvbk`. The 4.2/4.3 loops skip it (`KEEP-CN`). If anything rewrites it (an OOS OTA, a full-firmware flash), restore it from the Task 3 dump, each slot from its own file:
   ```
   adb reboot fastboot
@@ -465,7 +465,7 @@ Usually not needed: every LineageOS update already rewrites the bundled CPH2449 
    fastboot flash --slot=all keymaster keymaster.img
    fastboot flash --slot=all modem modem.img
    fastboot flash --slot=all oplus_sec oplus_sec.img
-   # oplusstanvbk: NOT on PHB110. Keep the CN copy; the OOS one crash-loops the modem (see 4.3).
+   # oplusstanvbk: NOT on a converted CN phone. Keep the CN copy; the OOS one crash-loops the modem (see 4.3).
    fastboot flash --slot=all qupfw qupfw.img
    fastboot flash --slot=all shrm shrm.img
    fastboot flash --slot=all splash splash.img
