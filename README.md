@@ -66,6 +66,37 @@ Host tools: `scripts/00-host-tools.sh` downloads `adb`/`fastboot` (platform-tool
 
 **Check:** `fastboot getvar unlocked` → `unlocked: yes`. Orange unlock warning on boot. After the wipe-reboot, redo steps 3–4 (Developer options and USB debugging get reset).
 
+### 2.1 — Attestation keys: check in EngineerMode, repair on stock
+
+Unlocking can invalidate the factory attestation keys (Widevine drops to L3, attestation fails). Check before and after unlocking:
+
+Dial `*#899#` → EngineerMode → Manual Test → Other → **Key Status**. Failed keys show red.
+
+If keys failed, repair them **on rooted stock ColorOS, before migrating**. `KmInstallKeybox` talks to the stock vendor KeyMint/TEE stack and does not work from LineageOS. `KmInstallKeybox` is not shipped here; source it yourself. Run it as a KernelSU/Magisk module `service.sh` with the binary in the module dir:
+
+```sh
+#!/system/bin/sh
+
+MODDIR="$(dirname "$(readlink -f "$0")")"
+LOG="$MODDIR/log.txt"
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"
+}
+
+log "==== Keybox provisioning start ===="
+su -c "echo root access OK" >> "$LOG" 2>&1
+chmod 755 "$MODDIR/KmInstallKeybox"
+su -mm -c "LD_LIBRARY_PATH=$MODDIR:/vendor/lib64 $MODDIR/KmInstallKeybox Keybox_file Device_ID true true" >> "$LOG" 2>&1
+log "==== Keybox provisioning end ===="
+```
+
+Back up `persist` first (`dd if=/dev/block/by-name/persist of=/sdcard/persist.img`, then pull it); the tool writes device-ID data there. Recheck Key Status after a reboot, then continue.
+
+After migrating, install [TEESimulator-RS](https://github.com/fishing-agents/TEESimulator-RS/releases/latest) for Play Integrity. A KernelSU Next + SUSFS kernel helps it hide root:
+- stock OxygenOS: [OP_KSUN_FS](https://github.com/fishing-agents/OP_KSUN_FS/releases/latest)
+- LineageOS 24: [LineageOS_KSUN_SUSFS](https://github.com/fishing-agents/LineageOS_KSUN_SUSFS/releases/latest)
+
 ---
 
 ## 3. Back up everything before touching firmware
@@ -438,7 +469,7 @@ Usually not needed: every LineageOS update already rewrites the bundled CPH2449 
 3. Freshly installed or updated: `adb shell cmd package bg-dexopt-job`, then leave it idle on the charger.
 4. Thermal zones over ~45 °C during the lag = throttling.
 
-**Root: APatch** (patches `boot`, never `init_boot`; runs Magisk-format modules). Install: APatch app → tap the "KernelPatch: not installed" card → Patch → select the installed build's stock `boot.img` → set the SuperKey (8–63 random chars; it's the password for kernel root, nothing generates it) → `fastboot flash boot apatch_patched_*.img` → open the app, enter the same SuperKey. Leave "embed KPM" empty. Each LineageOS update boots the other slot without root or modules: Updater → Install → reboot → patch the new build's `boot.img` → `fastboot flash boot <patched>` → reboot. Rescue from a bad module: `fastboot flash boot <the installed build's boot.img>` (unpatched). Less detectable alternative: KernelSU Next LKM + SUSFS (patches `init_boot`; untested on the LineageOS kernel). Play Integrity: BASIC is realistic. Never relock.
+**Root: APatch** (patches `boot`, never `init_boot`; runs Magisk-format modules). Install: APatch app → tap the "KernelPatch: not installed" card → Patch → select the installed build's stock `boot.img` → set the SuperKey (8–63 random chars; it's the password for kernel root, nothing generates it) → `fastboot flash boot apatch_patched_*.img` → open the app, enter the same SuperKey. Leave "embed KPM" empty. Each LineageOS update boots the other slot without root or modules: Updater → Install → reboot → patch the new build's `boot.img` → `fastboot flash boot <patched>` → reboot. Rescue from a bad module: `fastboot flash boot <the installed build's boot.img>` (unpatched). Less detectable alternative: KernelSU Next + SUSFS with the prebuilt LineageOS kernel from [LineageOS_KSUN_SUSFS](https://github.com/fishing-agents/LineageOS_KSUN_SUSFS/releases/latest) (must match the installed nightly), plus [TEESimulator-RS](https://github.com/fishing-agents/TEESimulator-RS/releases/latest); see 2.1. Play Integrity: BASIC is realistic. Never relock.
 
 **OnePlus camera (experimental).** `scripts/90-oplus-camera-module.sh` builds `build/oplus-camera/OplusCamera-module.zip` from `oos/` (OplusCamera, native libraries and camera SDK jars). The OOS framework wrapper DEX is appended **only to the camera's optional SDK jar**, not LineageOS's boot classpath. `OplusAppPlatform` is omitted because its OEM-signed `android.uid.system` cannot join LineageOS's platform UID. Install through KernelSU Manager → Modules and reboot; a mount metamodule such as Hybrid Mount is required. In KernelSU's `com.oplus.camera` App Profile disable **Umount modules** without granting root: otherwise the process cannot read its mounted APK and crashes before app initialization. That per-app setting removed the first crash; the new SDK jar addresses a subsequent missing-class exception, but has not been runtime-tested. Further ColorOS framework dependencies may still crash, and portrait/night modes were broken even in a crDroid port ([XDA](https://xdaforums.com/t/oplus-camera-and-custom-roms.4657206/)). If unstable, disable the module and reboot; a GCam port is the fallback ([XDA OnePlus 11 GCam](https://xdaforums.com/t/gcam-for-op-11.4553669/)).
 
