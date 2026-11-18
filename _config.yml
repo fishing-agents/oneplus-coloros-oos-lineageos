@@ -1,0 +1,12 @@
+title: OnePlus ColorOS to OxygenOS to LineageOS
+description: Convert CN ColorOS OnePlus/OPPO phones to OxygenOS and LineageOS
+keywords: oneplus, coloros, oxygenos, lineageos, super partition, imei, anti-rollback, edl
+theme: jekyll-theme-cayman
+plugins:
+  - jekyll-seo-tag
+  - jekyll-relative-links
+relative_links:
+  enabled: true
+  collections: false
+include: [README.md]
+exclude: [src, tests, scripts, configs, manifests, layout, logs, windows, uv.lock, pyproject.toml]
