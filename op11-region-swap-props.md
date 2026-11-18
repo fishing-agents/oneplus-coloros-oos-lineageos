@@ -1,6 +1,6 @@
 # OP11 CN → EU OxygenOS: build-property differences
 
-Documentation only. No properties were changed during this comparison. The only deliberately applied change on this unit is `persist.vendor.display.pxlw.iris_feature`, documented in [op11-display-debug.md](op11-display-debug.md).
+Documentation only. No properties were changed during this comparison. The only deliberately applied change on this unit is `persist.vendor.display.pxlw.iris_feature`, documented in `op11-display-debug.md`.
 
 ## Method
 
