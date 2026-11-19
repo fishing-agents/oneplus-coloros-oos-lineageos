@@ -508,6 +508,20 @@ APatch (patches `boot`, never `init_boot`; runs Magisk-format modules). Install:
 
 So before updating firmware, check both: the ARB index on OnePlus-antirollchecker, and whether the update changes the EDL keys (check the [OP11 EDL thread](https://xdaforums.com/t/op11-edl-downloadtool-to-restore-your-device-to-oxygenos-coloros.4607995/) and OnePlus-antirollchecker's community). If EDL is your fallback, don't install firmware that breaks it. Section 8 assumes EDL still works on this phone.
 
+### Untested: ARB-resistant OTA upgrade
+
+An idea, not tried on a phone and not scripted. Only the Qualcomm boot-chain images carry the ARB index (`xbl`, `xbl_config`, `abl`, `tz`, `hyp`, `devcfg`, `keymaster`, `aop`, `uefi`, `qupfw`, `shrm`, `cpucp`, `featenabler`). `boot`, `init_boot`, `vendor_boot`, `dtbo`, `recovery` and `super` don't touch the fuse. So a scripted OxygenOS update could:
+
+1. Extract the new full OTA and compare each boot-chain image's SHA-256 with this phone's backup (`backup/device/<name>_a.img`).
+2. Skip the boot-chain images that are identical; flashing them changes nothing.
+3. Run the ARB check (`scripts/arb.py`) only if one of them differs, and flash the changed ones only if the index is equal or higher.
+4. Flash the rest (`boot`, `vendor_boot`, `dtbo`, `super`, …) as usual.
+
+Limits:
+- Skipping a changed boot-chain image leaves old firmware under a new `vendor`. That usually boots, but the TEE/KeyMint, fingerprint, camera, audio or modem can break, and TEE security fixes aren't applied. It's the same problem as mixing CN and OxygenOS partitions.
+- The stock updater and the LineageOS sideload always write the full firmware, so this only helps for updates done with these scripts.
+- It's not known which boot-chain images actually differ between OxygenOS builds (e.g. 1002 → 1301).
+
 ---
 
 ## 8. Optional return to PHB110 ColorOS with OplusEdlTool v2
