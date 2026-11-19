@@ -28,7 +28,8 @@ Host tools: `scripts/00-host-tools.sh` downloads `adb`/`fastboot` (platform-tool
 |---|---|---|
 | `00-host-tools.sh` | host setup | host |
 | `10-backup-device.sh` | 3.3: collect flat backups and checksums; **manual per-device quarantine is mandatory afterward** | Android, rooted adb |
-| `20-extract.sh <cn.zip> <oos.zip>` | 3.1 + 3.4: extract both OTAs; refuses OOS older than CN or than 16.0.5.1301 | host |
+| `20-extract.sh <cn.zip> <oos.zip>` | 3.1 + 3.4: extract both OTAs; ARB check (OOS `xbl_config` index ≥ running firmware's, via `arb.py`); refuses OOS with a lower Android version than CN or older than 16.0.5.1301 | host |
+| `arb.py <xbl_config.img>` | print the ARB index; `tests/arb-selftest.py` checks it | host |
 | `50-lineage-download.sh` | 5.1: newest build + `super_empty.img`, verified against the official API hashes | host |
 | `30-oos-firmware.sh [-n]` | 4.3: conversion set (droidwin list + `init_boot`) from `oos/` (`FW_SRC=backup/cn-stock` for ColorOS), `oplusstanvbk`/`modem` from `backup/device/`; other slotted partitions (`rticmpdata`, `mdtp`, …) are left as they are; keeps LineageOS `recovery`. `-n` prints the plan only | bootloader, or LineageOS-recovery fastbootd |
 | `41-restore-oos.sh [-n] [--keep-recovery] [--rebuild]` | 4.3 + 4.5 in one run from the bootloader: LineageOS `recovery` to both slots (skipped with `--keep-recovery`), its fastbootd, `30-oos-firmware.sh`, `40-oos-super.sh` (`--rebuild` passed through), slot a. One confirmation; `-n` prints both plans only | bootloader |
@@ -178,14 +179,19 @@ for p in persist modemst1 modemst2 fsg fsc; do [[ -s backup/device/$p.img ]] || 
    **RPMB is not in this dump:** the backup loop reads ordinary `/dev/block/by-name` partitions, not the separately accessed authenticated RPMB storage. Replaying these `.img` files cannot directly restore or reset RPMB. Filesystem-backed secure state can nevertheless be stale relative to its RPMB-protected integrity state.
 
    **Attestation failure does not establish damaged identity:** the standalone tests show working ordinary hardware crypto but failing default attestation. A [OnePlus 13/15 experiment](https://wuxianlin.com/2025/11/12/oneplus-13-15-attestation-rkp-test/) reports similar unlock-state-dependent unavailability. That is a credible hypothesis, **not a confirmed PHB110 diagnosis**; restore damage and physical damage remain unproved. Do not authorize a mainboard replacement based on `-49` alone, and never test by relocking or writing attestation/provisioning state. See the [current measured findings](LineageOS_KSUN_SUSFS/docs/play-integrity-debug.md#what-we-verified-2026-10-22).
-4. Firmware-downgrade check. This is the go/no-go, since Qualcomm's fuse anti-rollback counter isn't readable by any tool here. Extract the OOS payload first, since the secondary check below needs its `vbmeta.img`:
+4. Anti-rollback (ARB) check. This is the go/no-go. The fuse itself can't be read, but it is never higher than the ARB index of the firmware the phone runs now, so compare the ARB index in `xbl_config`:
    ```
    tools/payload-dumper-go -o oos/ <OxygenOS_full.zip>
-   unzip -p <ColorOS_CN_full.zip> META-INF/com/android/metadata | grep -E 'post-(security-patch-level|sdk-level|build)' | tee logs/cn-build.txt   # skip this line if you have no CN zip at all
-   unzip -p <OxygenOS_full.zip> META-INF/com/android/metadata | grep -E 'post-(security-patch-level|sdk-level|build)' | tee logs/oos-build.txt
+   python3 scripts/arb.py backup/device/xbl_config_a.img   # running firmware (this phone's backup, step 3); else backup/cn-stock/xbl_config.img
+   python3 scripts/arb.py oos/xbl_config.img                # target
    ```
-   **Go/no-go:** OOS `post-sdk-level` ≥ CN's, and OOS `post-security-patch-level` ≥ CN's. If either is lower, stop and find a newer OOS build instead.
-   No CN zip at all? Read the live device's own build info instead (same comparison, no zip required): `adb shell 'getprop ro.build.version.security_patch; getprop ro.build.version.sdk' | tee logs/cn-build.txt` (two separate `getprop` calls: its second argument is a *default value*, not a second property name, so one call can't read both). Since this phone is already on ColorOS 16, the Android-major side of the go/no-go is already satisfied by definition; only the security-patch-date comparison still matters.
+   `scripts/20-extract.sh` does this automatically and logs it to `logs/arb.txt`.
+   - **OOS ARB equal to the running one:** safe.
+   - **OOS ARB higher:** also safe to flash, but it raises the fuse after boot. From then on, any firmware with a lower index (older OOS, the old CN build, EDL packages) hard-bricks the phone.
+   - **OOS ARB lower:** stop. Flashing it hard-bricks the phone.
+
+   The OxygenOS or Android version doesn't tell you the ARB index: it can rise within the same Android version. Check the index, not the version. [OnePlus-antirollchecker](https://github.com/Bartixxx32/OnePlus-antirollchecker) lists it per build (OnePlus 11 16.0.5.1301: 0) if you want to check before downloading.
+   The script also still refuses an OOS with a lower Android version (`post-sdk-level`) than CN, or older than 16.0.5.1301 (LineageOS's bundled firmware; `LOS_FW=` to skip on other devices). A lower security patch is only a note.
    - Optional secondary sanity check (AVB rollback index, not the real fuse ARB, and not enforced while unlocked): `python3 tools/avbtool.py info_image --image oos/vbmeta.img | grep "Rollback Index"`, compare to the CN build's `vbmeta.img`.
 
 ---
