@@ -484,6 +484,14 @@ Usually not needed: every LineageOS update already rewrites the bundled CPH2449 
 - Firmware updates (section 6): never flash `oplusstanvbk`.
 - Clean reinstall or new phone: Seedvault (Settings → System → Backup) plus in-app exports for Signal/WhatsApp, 2FA and password manager. Keystore-bound and banking apps need re-login.
 
+**ARB and the boot chain on LineageOS.** LineageOS itself has no rollback index; its ARB is that of the OxygenOS firmware it bundles. Every nightly and sideload writes the full boot chain (`xbl`, `xbl_config`, `abl`, `tz`, `hyp`, `keymaster`, …) listed in [`proprietary-firmware.txt`](https://github.com/LineageOS/android_device_oneplus_salami/blob/lineage-24.0/proprietary-firmware.txt) of the device tree. Its header names the source build (currently `CPH2449_16.0.5.1301(EX01)`, ARB 0). LineageOS's own images (`boot`, `vendor_boot`, `dtbo`, `recovery`, `super`) don't affect the fuse.
+- When that file changes to a newer OxygenOS build (commit like "salami: Update from OOS …"), the next nightly may raise the ARB index. Look up the new build on [OnePlus-antirollchecker](https://github.com/Bartixxx32/OnePlus-antirollchecker), or check the zip before updating:
+  ```
+  tools/payload-dumper-go -p xbl_config -o /tmp/los-fw lineage-*-salami-signed.zip
+  python3 scripts/arb.py /tmp/los-fw/xbl_config.img
+  ```
+- A higher index is still safe to install, but once it boots there's no way back to OxygenOS, ColorOS or EDL packages with a lower index (sections 4.5 and 8 included). If you want to keep that option, hold the update.
+
 **UI lag.** LineageOS builds its own `vendor`/`odm` from OOS 16.0.5.1301 blobs; no ColorOS partition is used, and keeping one wouldn't help. Run `scripts/80-perf-diag.sh` while it lags, then check, in order:
 1. Nightly date: builds before ~2026-09-28 lack the perf-HAL boost fix ([commit](https://github.com/LineageOS/android_device_oneplus_sm8550-common/commit/8ac51aeef83a5083934de07772f907297a378c47)).
 2. Settings → Display → Smooth display (120 Hz).
